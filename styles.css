@@ -1,0 +1,413 @@
+/* CSS Variables for a futuristic/cyber theme */
+:root {
+  --primary-color: #0d0d0d;        /* Sidebar background */
+  --secondary-color: #1a1a1a;      /* Hover backgrounds */
+  --accent-color: #00d8ff;         /* Neon accent (buttons, progress bar) */
+  --accent-hover: #00a8cc;
+  --error-color: #ff073a;
+  --bg-color: #121212;            /* Overall background */
+  --white: #e0e0e0;               /* Light text */
+  --font-family: 'Roboto', sans-serif;
+  --text-color: #e0e0e0;
+}
+
+/* Reset and body */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  line-height: 1.6;
+}
+
+/* Main container: sidebar + content */
+.container {
+  display: flex;
+  min-height: 100vh; /* full height (no footer) */
+}
+
+/* Sidebar / Lateral Menu */
+.sidebar {
+  background-color: var(--primary-color);
+  color: var(--white);
+  width: 250px;
+  padding: 20px;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.sidebar.collapsed {
+  width: 80px;
+}
+
+.sidebar:hover {
+  transform: scale(1.02);
+}
+
+/* Quando o menu estiver recolhido, ocultar textos e área de usuário */
+.sidebar.collapsed .menu-text,
+.sidebar.collapsed #userStatus {
+  display: none;
+}
+
+.sidebar-header {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.logo-img {
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 10px;
+  transition: width 0.3s ease;
+}
+
+.sidebar.collapsed .logo-img {
+  width: 40px;
+}
+
+.sidebar-toggle {
+  background: none;
+  border: none;
+  color: var(--white);
+  font-size: 20px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
+.user-status {
+  font-size: 14px;
+  padding: 5px;
+}
+
+.user-status a {
+  color: var(--accent-color);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+/* Menu items com ícones e texto */
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+}
+
+.sidebar ul li {
+  margin-bottom: 15px;
+}
+
+.sidebar ul li a {
+  color: var(--white);
+  text-decoration: none;
+  font-size: 18px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+.sidebar ul li a:hover,
+.sidebar ul li a.active {
+  background-color: var(--secondary-color);
+  transform: scale(1.05);
+}
+
+.menu-icon {
+  margin-right: 10px;
+  font-size: 20px;
+}
+
+.menu-text {
+  display: inline;
+}
+
+/* Main content area */
+.main-content {
+  flex: 1;
+  padding: 40px;
+  background-color: #1e1e1e;
+  border-left: 3px solid var(--accent-color);
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Form styles (for login, session, calculators) */
+.session-form,
+.login-form,
+.post-form {
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.session-form label,
+.login-form label,
+.post-form label {
+  font-weight: 500;
+  margin-top: 10px;
+  display: block;
+}
+
+.session-form input,
+.login-form input,
+.session-form select,
+.login-form select,
+.post-form input,
+.post-form textarea {
+  width: 100%;
+  padding: 10px;
+  margin-top: 5px;
+  font-size: 16px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background-color: #2a2a2a;
+  color: var(--white);
+}
+
+.session-form button,
+.login-form button,
+.post-form button {
+  width: 100%;
+  padding: 12px;
+  margin-top: 15px;
+  background-color: var(--accent-color);
+  border: none;
+  color: var(--white);
+  font-size: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.session-form button:hover,
+.login-form button:hover,
+.post-form button:hover {
+  background-color: var(--accent-hover);
+}
+
+/* Table styles */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+table,
+th,
+td {
+  border: 1px solid #333;
+}
+
+th,
+td {
+  padding: 12px;
+  text-align: left;
+}
+
+th {
+  background-color: var(--secondary-color);
+}
+
+/* Dashboard & Results Layout (modules) */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.dashboard-header h2 {
+  font-size: 24px;
+  margin: 0;
+}
+
+.time-display {
+  font-size: 16px;
+}
+
+.dashboard-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.dashboard-column {
+  flex: 1;
+  background-color: #2a2a2a;
+  padding: 15px;
+  border-radius: 4px;
+}
+
+.dashboard-column.full-width {
+  flex: none;
+  width: 100%;
+}
+
+/* Progress bar */
+.progress-container {
+  margin-top: 10px;
+}
+
+.progress-bar {
+  width: 100%;
+  background-color: #333;
+  border-radius: 4px;
+  overflow: hidden;
+  height: 20px;
+  margin-bottom: 5px;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background-color: var(--accent-color);
+  transition: width 0.3s ease;
+}
+
+/* Aggregate stats (Results) */
+.aggregate-stats {
+  background-color: var(--secondary-color);
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+.aggregate-stats h3 {
+  margin-bottom: 10px;
+  color: var(--accent-color);
+}
+.aggregate-stats p {
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+
+/* Calculators page layout */
+/* Two columns on desktop */
+.calc-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.calc-column {
+  flex: 1;
+  background-color: var(--secondary-color);
+  padding: 15px;
+  border-radius: 4px;
+}
+
+/* One column on mobile */
+@media (max-width: 768px) {
+  .calc-row {
+    flex-direction: column;
+  }
+}
+
+/* Calculators section styles */
+.calculators-section h3 {
+  margin-bottom: 10px;
+  color: var(--accent-color);
+}
+.calculators-section label {
+  display: block;
+  margin-top: 10px;
+}
+.calculators-section input,
+.calculators-section select {
+  width: 100%;
+  padding: 10px;
+  margin-top: 5px;
+  font-size: 16px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background-color: #2a2a2a;
+  color: var(--white);
+}
+.calculators-section button {
+  width: 100%;
+  padding: 12px;
+  margin-top: 15px;
+  background-color: var(--accent-color);
+  border: none;
+  color: var(--white);
+  font-size: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+.calculators-section button:hover {
+  background-color: var(--accent-hover);
+}
+.calculators-section p {
+  margin-top: 10px;
+  font-size: 16px;
+}
+
+/* Article page styles */
+.article-page {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--accent-color);
+  font-size: 18px;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+  }
+  
+  .sidebar {
+    width: 100%;
+    padding: 10px 20px;
+  }
+  
+  .sidebar ul {
+    display: flex;
+    overflow-x: auto;
+  }
+  
+  .sidebar ul li {
+    margin-right: 10px;
+    margin-bottom: 0;
+  }
+  
+  .sidebar ul li a {
+    font-size: 16px;
+    padding: 8px;
+  }
+  
+  .main-content {
+    padding: 20px;
+  }
+  
+  .dashboard-row {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
