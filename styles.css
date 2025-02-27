@@ -1,23 +1,22 @@
-/* CSS Variables for a futuristic/cyber theme */
+/* CSS Variables para tema futurista/cyber */
 :root {
-  --primary-color: #0d0d0d;        /* Sidebar background */
-  --secondary-color: #1a1a1a;      /* Hover backgrounds */
-  --accent-color: #00d8ff;         /* Neon accent (buttons, progress bar) */
+  --primary-color: #0d0d0d;
+  --secondary-color: #1a1a1a;
+  --accent-color: #00d8ff;
   --accent-hover: #00a8cc;
   --error-color: #ff073a;
-  --bg-color: #121212;            /* Overall background */
-  --white: #e0e0e0;               /* Light text */
+  --bg-color: #121212;
+  --white: #e0e0e0;
   --font-family: 'Roboto', sans-serif;
   --text-color: #e0e0e0;
 }
 
-/* Reset and body */
+/* Reset e body */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
-
 body {
   font-family: var(--font-family);
   background-color: var(--bg-color);
@@ -25,13 +24,13 @@ body {
   line-height: 1.6;
 }
 
-/* Main container: sidebar + content */
+/* Container principal */
 .container {
   display: flex;
-  min-height: 100vh; /* full height (no footer) */
+  min-height: 100vh;
 }
 
-/* Sidebar / Lateral Menu */
+/* Sidebar */
 .sidebar {
   background-color: var(--primary-color);
   color: var(--white);
@@ -40,37 +39,31 @@ body {
   flex-shrink: 0;
   transition: all 0.3s ease;
 }
-
 .sidebar.collapsed {
   width: 80px;
 }
-
 .sidebar:hover {
   transform: scale(1.02);
 }
-
-/* Quando o menu estiver recolhido, ocultar textos e área de usuário */
+/* Oculta textos e área de usuário quando recolhido */
 .sidebar.collapsed .menu-text,
 .sidebar.collapsed #userStatus {
   display: none;
 }
-
 .sidebar-header {
   margin-bottom: 20px;
   text-align: center;
 }
-
 .logo-img {
-  max-width: 100%;
+  max-width: 80%;
   height: auto;
   margin-bottom: 10px;
+  margin-top: 15px;
   transition: width 0.3s ease;
 }
-
 .sidebar.collapsed .logo-img {
   width: 40px;
 }
-
 .sidebar-toggle {
   background: none;
   border: none;
@@ -79,28 +72,23 @@ body {
   cursor: pointer;
   margin-bottom: 10px;
 }
-
 .user-status {
   font-size: 14px;
   padding: 5px;
 }
-
 .user-status a {
   color: var(--accent-color);
   text-decoration: none;
   font-weight: 500;
 }
-
-/* Menu items com ícones e texto */
+/* Itens do menu */
 .sidebar ul {
   list-style: none;
   padding: 0;
 }
-
 .sidebar ul li {
   margin-bottom: 15px;
 }
-
 .sidebar ul li a {
   color: var(--white);
   text-decoration: none;
@@ -111,23 +99,20 @@ body {
   border-radius: 4px;
   transition: background-color 0.3s ease, transform 0.3s ease;
 }
-
 .sidebar ul li a:hover,
 .sidebar ul li a.active {
   background-color: var(--secondary-color);
   transform: scale(1.05);
 }
-
 .menu-icon {
   margin-right: 10px;
   font-size: 20px;
 }
-
 .menu-text {
   display: inline;
 }
 
-/* Main content area */
+/* Conteúdo principal */
 .main-content {
   flex: 1;
   padding: 40px;
@@ -135,20 +120,40 @@ body {
   border-left: 3px solid var(--accent-color);
   animation: fadeIn 0.5s ease-out;
 }
-
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+/* Em mobile, borda esquerda vira superior */
+@media (max-width: 768px) {
+  .main-content {
+    border-left: none;
+    border-top: 3px solid var(--accent-color);
+  }
+}
 
-/* Form styles (for login, session, calculators) */
+/* Inputs e selects modernos */
+input, select {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--accent-color);
+  padding: 8px;
+  color: var(--white);
+  width: 100%;
+  transition: border-color 0.3s ease;
+}
+input:focus, select:focus {
+  outline: none;
+  border-bottom-color: var(--accent-hover);
+}
+
+/* Formulários */
 .session-form,
 .login-form,
 .post-form {
   max-width: 400px;
   margin: 0 auto;
 }
-
 .session-form label,
 .login-form label,
 .post-form label {
@@ -156,23 +161,6 @@ body {
   margin-top: 10px;
   display: block;
 }
-
-.session-form input,
-.login-form input,
-.session-form select,
-.login-form select,
-.post-form input,
-.post-form textarea {
-  width: 100%;
-  padding: 10px;
-  margin-top: 5px;
-  font-size: 16px;
-  border: 1px solid #333;
-  border-radius: 4px;
-  background-color: #2a2a2a;
-  color: var(--white);
-}
-
 .session-form button,
 .login-form button,
 .post-form button {
@@ -187,81 +175,70 @@ body {
   cursor: pointer;
   transition: background-color 0.3s ease;
 }
-
 .session-form button:hover,
 .login-form button:hover,
 .post-form button:hover {
   background-color: var(--accent-hover);
 }
 
-/* Table styles */
+/* Tabelas responsivas */
+.table-responsive {
+  overflow-x: auto;
+}
 table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 10px;
 }
-
-table,
-th,
-td {
+table, th, td {
   border: 1px solid #333;
 }
-
-th,
-td {
+th, td {
   padding: 12px;
   text-align: left;
 }
-
 th {
   background-color: var(--secondary-color);
 }
 
-/* Dashboard & Results Layout (modules) */
+/* Layout modular para Dashboard & Results */
 .dashboard {
   display: flex;
   flex-direction: column;
 }
-
 .dashboard-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
-
 .dashboard-header h2 {
   font-size: 24px;
   margin: 0;
 }
-
 .time-display {
   font-size: 16px;
 }
-
 .dashboard-row {
   display: flex;
   gap: 20px;
   margin-bottom: 20px;
 }
-
 .dashboard-column {
   flex: 1;
   background-color: #2a2a2a;
   padding: 15px;
   border-radius: 4px;
 }
-
 .dashboard-column.full-width {
   flex: none;
   width: 100%;
 }
 
-/* Progress bar */
+/* Barra de progresso */
 .progress-container {
   margin-top: 10px;
 }
-
 .progress-bar {
   width: 100%;
   background-color: #333;
@@ -270,7 +247,6 @@ th {
   height: 20px;
   margin-bottom: 5px;
 }
-
 .progress-fill {
   height: 100%;
   width: 0%;
@@ -294,73 +270,75 @@ th {
   margin-bottom: 5px;
 }
 
-/* Calculators page layout */
-/* Two columns on desktop */
-.calc-row {
+/* Home - Abas de categorias (exibidas horizontalmente em mobile) */
+/* Estilo para a imagem principal do artigo */
+.article-main-img {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  margin-bottom: 20px;
+  border-radius: 4px;
+}
+
+.article-tabs {
   display: flex;
   gap: 20px;
   margin-bottom: 20px;
+  border-bottom: 2px solid var(--secondary-color);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.article-tab {
+  cursor: pointer;
+  padding: 10px 15px;
+  color: var(--white);
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.3s ease;
+}
+.article-tab.active {
+  border-bottom: 2px solid var(--accent-color);
 }
 
-.calc-column {
-  flex: 1;
-  background-color: var(--secondary-color);
+/* Artigos em grid */
+.articles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+.article-card {
+  background-color: #2a2a2a;
   padding: 15px;
   border-radius: 4px;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+  cursor: pointer;
 }
-
-/* One column on mobile */
-@media (max-width: 768px) {
-  .calc-row {
-    flex-direction: column;
-  }
+.article-card:hover {
+  box-shadow: 0 0 8px var(--accent-color);
+  transform: scale(1.02);
 }
-
-/* Calculators section styles */
-.calculators-section h3 {
+.article-card img {
+  max-width: 100%;
+  border-radius: 4px;
   margin-bottom: 10px;
+}
+.article-card h3 {
+  margin-top: 0;
   color: var(--accent-color);
 }
-.calculators-section label {
-  display: block;
-  margin-top: 10px;
+.article-card p {
+  font-size: 14px;
 }
-.calculators-section input,
-.calculators-section select {
-  width: 100%;
-  padding: 10px;
-  margin-top: 5px;
-  font-size: 16px;
-  border: 1px solid #333;
-  border-radius: 4px;
-  background-color: #2a2a2a;
-  color: var(--white);
-}
-.calculators-section button {
-  width: 100%;
-  padding: 12px;
-  margin-top: 15px;
-  background-color: var(--accent-color);
-  border: none;
-  color: var(--white);
-  font-size: 18px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-.calculators-section button:hover {
-  background-color: var(--accent-hover);
-}
-.calculators-section p {
-  margin-top: 10px;
-  font-size: 16px;
+.article-card .read-more {
+  color: var(--accent-color);
+  text-decoration: none;
+  font-weight: bold;
 }
 
-/* Article page styles */
+/* Página de artigo individual */
 .article-page {
   animation: fadeIn 0.5s ease-out;
 }
-
 .back-btn {
   background: none;
   border: none;
@@ -370,41 +348,90 @@ th {
   margin-bottom: 20px;
 }
 
-/* Responsive adjustments */
+/* Neon effect para a tela de iniciar sessão (Scalping) */
+.neon-box {
+  background-color: #1e1e1e;
+  border: 2px solid var(--accent-color);
+  box-shadow: 0 0 10px var(--accent-color), 0 0 20px var(--accent-color);
+  border-radius: 8px;
+  padding: 20px;
+  margin: 50px auto;
+  max-width: 400px;
+  text-align: center;
+}
+
+/* Calculators - Interface por abas */
+.calc-tabs {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--secondary-color);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.calc-tab {
+  cursor: pointer;
+  padding: 10px 15px;
+  color: var(--white);
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.3s ease;
+}
+.calc-tab.active {
+  border-bottom: 2px solid var(--accent-color);
+}
+.calc-content {
+  background-color: var(--secondary-color);
+  padding: 20px;
+  border-radius: 4px;
+  text-align: center;
+}
+.calc-item {
+  display: none;
+}
+.calc-item.active {
+  display: block;
+}
+.calc-explanation {
+  margin-top: 15px;
+  font-size: 14px;
+  color: var(--accent-color);
+}
+
+/* Responsive para abas de calculadoras: em mobile, as abas ficam em linha (já configurado com overflow-x) */
+
+/* Responsive ajustes para mobile */
 @media (max-width: 768px) {
   .container {
     flex-direction: column;
   }
-  
   .sidebar {
     width: 100%;
     padding: 10px 20px;
   }
-  
+  .sidebar-toggle {
+    display: none;
+  }
   .sidebar ul {
     display: flex;
     overflow-x: auto;
   }
-  
   .sidebar ul li {
     margin-right: 10px;
     margin-bottom: 0;
   }
-  
   .sidebar ul li a {
     font-size: 16px;
     padding: 8px;
   }
-  
   .main-content {
     padding: 20px;
+    border-left: none;
+    border-top: 3px solid var(--accent-color);
   }
-  
   .dashboard-row {
     flex-direction: column;
   }
 }
-
 @media (max-width: 480px) {
   .dashboard-header {
     flex-direction: column;
