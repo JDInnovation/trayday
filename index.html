@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Trading Platform</title>
+  <title>Trayday</title>
   <link rel="stylesheet" href="styles.css" />
   <!-- Chart.js for charts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -12,6 +12,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet"/>
   <!-- Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <!-- Favicon -->
+  <link rel="icon" href="traydayicon.png" type="image/png">
 </head>
 <body>
   <div class="container">
@@ -19,27 +21,25 @@
     <nav class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <div class="logo">
-          <!-- Logo image. Será trayday.png quando expandido e traydayicon.png quando recolhido -->
+          <!-- Exibe trayday.png quando expandido e traydayicon.png quando recolhido -->
           <img src="trayday.png" alt="Logo" class="logo-img" id="logoImg" />
         </div>
-        <!-- Toggle button -->
         <button id="sidebarToggle" class="sidebar-toggle">
           <i class="fas fa-bars"></i>
         </button>
         <div class="user-status" id="userStatus">
-          <!-- Área de usuário (Hello, user / Login) -->
+          <!-- Exibição de usuário (Hello, user / Login) -->
         </div>
       </div>
       <ul id="menuLinks">
-        <!-- Itens do menu serão gerados dinamicamente -->
+        <!-- Itens do menu gerados dinamicamente -->
       </ul>
     </nav>
-    <!-- Main content area -->
+    <!-- Conteúdo principal -->
     <main class="main-content" id="mainContent">
       <!-- Conteúdo dinâmico carregado aqui -->
     </main>
   </div>
-  <!-- Footer removido conforme solicitado -->
   <script src="script.js"></script>
 </body>
 </html>
