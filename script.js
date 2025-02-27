@@ -1,43 +1,59 @@
 document.addEventListener("DOMContentLoaded", function() {
-  // Global variables for authentication and data
+  // Variáveis globais para autenticação e dados
   let currentUser = JSON.parse(localStorage.getItem("currentUser")) || null;
   let sessionHistory = [];
 
-  // Dummy articles for Home feed
+  // Dummy articles para a Home com categorias e thumbnails
   const dummyArticles = [
     {
       id: 1,
-      author: "AnalystX",
-      title: "Market on the Rise!",
-      content: "Full article content. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Curabitur pretium tincidunt lacus.",
-      date: new Date().toLocaleString()
+      author: "CryptoGuru",
+      title: "Bitcoin Breaks New High",
+      date: "April 1, 2025",
+      category: "noticia",
+      excerpt: "Bitcoin reaches an unprecedented all-time high as global interest surges.",
+      thumbnail: "thumb1.jpg",
+      content: "In a remarkable turn of events, Bitcoin has reached a new all-time high, attracting investors worldwide. Experts say that the surge is due to increased institutional interest and macroeconomic factors. This milestone could signal a new era for cryptocurrencies."
     },
     {
       id: 2,
-      author: "TraderY",
-      title: "Daily Tip: Risk Management",
-      content: "Full article content. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Pellentesque habitant morbi tristique senectus et netus.",
-      date: new Date().toLocaleString()
+      author: "BlockchainExpert",
+      title: "ETH: The Future of Smart Contracts",
+      date: "March 28, 2025",
+      category: "análises",
+      excerpt: "Ethereum continues to lead the way in smart contract innovation.",
+      thumbnail: "thumb2.jpg",
+      content: "Ethereum, the pioneer of smart contracts, remains at the forefront of blockchain technology. With a series of upgrades and an expanding ecosystem, ETH is positioning itself as the backbone for decentralized applications. This article explores the future potential of Ethereum and its role in the evolving digital economy."
+    },
+    {
+      id: 3,
+      author: "TraderPro",
+      title: "Scalping Strategies in Volatile Markets",
+      date: "April 3, 2025",
+      category: "informação",
+      excerpt: "Scalping can be highly profitable if executed with precision and discipline.",
+      thumbnail: "thumb3.jpg",
+      content: "Scalping, a trading strategy focused on small but frequent profits, is gaining traction in volatile markets. In this comprehensive guide, we explore various scalping techniques, risk management strategies, and real-world examples to help traders capitalize on rapid market movements."
     }
   ];
 
-  // Variables for active trading session
+  // Variáveis para a sessão de trading (Scalping)
   let sessionStartTime;
   let sessionTimerInterval;
   let sessionData = {
     initialBank: 0,
-    type: "normal",
+    type: "normal", // Valores: soft, normal, aggressive
     trades: [],
     riskPerTrade: 0,
     maxTrades: 0,
     objectivePercent: 0
   };
 
-  // Chart variables
-  let performanceChart; // Session performance chart
-  let resultsChart;     // Results bar chart
+  // Variáveis para gráficos
+  let performanceChart;
+  let resultsChart;
 
-  // Mapping for menu icons (Font Awesome)
+  // Mapeamento de ícones para o menu
   const iconMap = {
     home: '<i class="fas fa-home menu-icon"></i>',
     sessao: '<i class="fas fa-chart-line menu-icon"></i>',
@@ -47,7 +63,7 @@ document.addEventListener("DOMContentLoaded", function() {
     login: '<i class="fas fa-sign-in-alt menu-icon"></i>'
   };
 
-  // Update menu with icons and text
+  // Atualiza o menu com ícones e textos
   function updateMenu() {
     const menuLinks = document.getElementById("menuLinks");
     menuLinks.innerHTML = "";
@@ -55,7 +71,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (currentUser) {
       items = [
         { hash: "#home", label: "Home", key: "home" },
-        { hash: "#sessao", label: "Session", key: "sessao" },
+        { hash: "#sessao", label: "Scalping", key: "sessao" },
         { hash: "#resultados", label: "Results", key: "resultados" },
         { hash: "#calculators", label: "Calculators", key: "calculators" },
         { hash: "#perfil", label: "Profile", key: "perfil" }
@@ -88,19 +104,21 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // Sidebar toggle functionality
+  // Toggle da sidebar (apenas para desktop)
   document.getElementById("sidebarToggle").addEventListener("click", function() {
-    const sidebar = document.getElementById("sidebar");
-    sidebar.classList.toggle("collapsed");
-    const logoImg = document.getElementById("logoImg");
-    if (sidebar.classList.contains("collapsed")) {
-      logoImg.src = "traydayicon.png";
-    } else {
-      logoImg.src = "trayday.png";
+    if (window.innerWidth > 768) {
+      const sidebar = document.getElementById("sidebar");
+      sidebar.classList.toggle("collapsed");
+      const logoImg = document.getElementById("logoImg");
+      if (sidebar.classList.contains("collapsed")) {
+        logoImg.src = "traydayicon.png";
+      } else {
+        logoImg.src = "trayday.png";
+      }
     }
   });
 
-  // Load content based on URL hash
+  // Carrega conteúdo com base no hash da URL
   function loadContent() {
     let section = window.location.hash.substring(1);
     if (!section) section = "home";
@@ -184,31 +202,47 @@ document.addEventListener("DOMContentLoaded", function() {
     window.location.hash = "login";
   }
 
-  // --- HOME SECTION ---
+  // --- HOME SECTION com abas de categorias ---
   function renderHome() {
-    let postsHTML = "";
-    dummyArticles.forEach(article => {
-      postsHTML += `
-        <a href="#article_${article.id}" class="article-link">
-          <div class="post">
-            <div class="post-header">
-              <span><strong>${article.author}</strong></span>
-              <span>${article.date}</span>
-            </div>
-            <div class="post-body">
-              <h3>${article.title}</h3>
-              <p>${article.content.substring(0, 100)}...</p>
-            </div>
-          </div>
-        </a>
-      `;
-    });
-    const homeHTML = `
-      <h2>Feed</h2>
-      <p>Stay updated with the latest news, analyses, and trading tips.</p>
-      <div id="feedPosts">${postsHTML}</div>
+    const tabsHTML = `
+      <div class="article-tabs">
+        <span class="article-tab active" data-category="all">All</span>
+        <span class="article-tab" data-category="noticia">Notícia</span>
+        <span class="article-tab" data-category="análises">Análises</span>
+        <span class="article-tab" data-category="informação">Informação</span>
+      </div>
     `;
-    document.getElementById("mainContent").innerHTML = homeHTML;
+    document.getElementById("mainContent").innerHTML = tabsHTML + `<div id="articlesGrid"></div>`;
+    renderArticles("all");
+    document.querySelectorAll(".article-tab").forEach(tab => {
+      tab.style.cursor = "pointer";
+      tab.addEventListener("click", function() {
+        document.querySelectorAll(".article-tab").forEach(t => t.classList.remove("active"));
+        this.classList.add("active");
+        const category = this.getAttribute("data-category");
+        renderArticles(category);
+      });
+    });
+  }
+
+  function renderArticles(category) {
+    const grid = document.getElementById("articlesGrid");
+    let articlesHTML = `<div class="articles-grid">`;
+    dummyArticles.forEach(article => {
+      if (category === "all" || article.category === category) {
+        articlesHTML += `
+          <div class="article-card" data-category="${article.category}">
+            <img src="${article.thumbnail}" alt="Thumbnail" class="article-thumb" />
+            <h3>${article.title}</h3>
+            <p><em>By ${article.author} - ${article.date}</em></p>
+            <p>${article.excerpt}</p>
+            <a href="#article_${article.id}" class="read-more">Read More</a>
+          </div>
+        `;
+      }
+    });
+    articlesHTML += `</div>`;
+    grid.innerHTML = articlesHTML;
   }
 
   // --- ARTICLE PAGE ---
@@ -223,7 +257,8 @@ document.addEventListener("DOMContentLoaded", function() {
       <div class="article-page">
         <button class="back-btn" onclick="window.history.back()">← Back</button>
         <h2>${article.title}</h2>
-        <p class="article-meta">By <strong>${article.author}</strong> | ${article.date}</p>
+        <p><em>By ${article.author} - ${article.date}</em></p>
+        <img src="${article.thumbnail}" alt="Article Image" class="article-main-img" />
         <div class="article-content">
           <p>${article.content}</p>
         </div>
@@ -231,7 +266,7 @@ document.addEventListener("DOMContentLoaded", function() {
     `;
     document.getElementById("mainContent").innerHTML = articleHTML;
   }
-
+  
   // --- PROFILE SECTION ---
   function renderProfile() {
     const profileHTML = `
@@ -242,19 +277,22 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("mainContent").innerHTML = profileHTML;
   }
 
-  // --- TRADING SESSION SECTION ---
+  // --- SCALPING SECTION (Session) ---
   function renderSessionStart() {
     const sessionStartHTML = `
-      <h2>Start Trading Session</h2>
-      <div class="session-form">
-        <label for="initialBank">Initial Bank ($):</label>
-        <input type="number" id="initialBank" placeholder="e.g., 1000" min="0" />
-        <label for="sessionType">Session Type:</label>
-        <select id="sessionType">
-          <option value="normal">Normal</option>
-          <option value="aggressive">Aggressive</option>
-        </select>
-        <button id="startSessionBtn">Start Session</button>
+      <div class="neon-box">
+        <h2>Start Scalping Session</h2>
+        <div class="session-form">
+          <label for="initialBank">Initial Bank ($):</label>
+          <input type="number" id="initialBank" placeholder="e.g., 1000" min="0" />
+          <label for="sessionType">Session Type:</label>
+          <select id="sessionType">
+            <option value="soft">Soft</option>
+            <option value="normal">Normal</option>
+            <option value="aggressive">Aggressive</option>
+          </select>
+          <button id="startSessionBtn">Start Session</button>
+        </div>
       </div>
     `;
     document.getElementById("mainContent").innerHTML = sessionStartHTML;
@@ -271,14 +309,18 @@ document.addEventListener("DOMContentLoaded", function() {
     sessionData.initialBank = initialBank;
     sessionData.type = type;
     sessionData.trades = [];
-    if (type === "normal") {
+    if (type === "soft") {
+      sessionData.riskPerTrade = 0.01 * initialBank;
+      sessionData.maxTrades = 15;
+      sessionData.objectivePercent = 3;
+    } else if (type === "normal") {
+      sessionData.riskPerTrade = 0.02 * initialBank;
+      sessionData.maxTrades = 10;
+      sessionData.objectivePercent = 5;
+    } else if (type === "aggressive") {
       sessionData.riskPerTrade = 0.03 * initialBank;
       sessionData.maxTrades = 5;
       sessionData.objectivePercent = 10;
-    } else if (type === "aggressive") {
-      sessionData.riskPerTrade = 0.06 * initialBank;
-      sessionData.maxTrades = 3;
-      sessionData.objectivePercent = 20;
     }
     sessionStartTime = new Date();
     sessionTimerInterval = setInterval(updateTimer, 1000);
@@ -294,12 +336,13 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("session-timer").textContent = `${h}:${m}:${s}`;
   }
 
-  // --- Session Dashboard Layout (modules) ---
   function renderSessionDashboard() {
+    const worstBalance = sessionData.initialBank - (sessionData.riskPerTrade * sessionData.maxTrades);
+    const bestBalance = sessionData.initialBank * (1 + sessionData.objectivePercent / 100);
     const dashboardHTML = `
       <div class="dashboard">
         <div class="dashboard-header">
-          <h2>Session Dashboard</h2>
+          <h2>Scalping Dashboard</h2>
           <div class="time-display">
             <strong>Time: </strong><span id="session-timer">00:00:00</span>
           </div>
@@ -312,6 +355,8 @@ document.addEventListener("DOMContentLoaded", function() {
             <p><strong>Max Trades:</strong> ${sessionData.maxTrades}</p>
             <p><strong>Objective Profit:</strong> ${sessionData.objectivePercent}%</p>
             <p><strong>Current Bank:</strong> $<span id="currentBank">${sessionData.initialBank.toFixed(2)}</span></p>
+            <p><strong>Worst-case Balance:</strong> $${worstBalance.toFixed(2)}</p>
+            <p><strong>Best-case Balance:</strong> $${bestBalance.toFixed(2)}</p>
           </div>
           <div class="dashboard-column">
             <h3>Statistics</h3>
@@ -342,18 +387,20 @@ document.addEventListener("DOMContentLoaded", function() {
         <div class="dashboard-row">
           <div class="dashboard-column full-width">
             <h3>Trades History</h3>
-            <table id="tradesTable">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Value ($)</th>
-                  <th>Pct Gain (%)</th>
-                  <th>Date/Time</th>
-                  <th>Remove</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
+            <div class="table-responsive">
+              <table id="tradesTable">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Value ($)</th>
+                    <th>Pct Gain (%)</th>
+                    <th>Date/Time</th>
+                    <th>Remove</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </div>
         </div>
         <div class="dashboard-row">
@@ -618,7 +665,6 @@ document.addEventListener("DOMContentLoaded", function() {
     const resultsHTML = `
       <h2>Session Results</h2>
       ${aggHTML}
-      <!-- Row with two modules: Bar Chart and Pie Chart -->
       <div class="dashboard-row">
         <div class="dashboard-column">
           <h3>Profit/Loss Chart</h3>
@@ -629,25 +675,26 @@ document.addEventListener("DOMContentLoaded", function() {
           <canvas id="resultsPieChart"></canvas>
         </div>
       </div>
-      <!-- Full width session table -->
       <div class="dashboard-row">
         <div class="dashboard-column full-width">
           <h3>Detailed Session Table</h3>
-          <table id="resultsTable">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Duration</th>
-                <th>Initial Bank</th>
-                <th>Total Trades</th>
-                <th>Total Gain/Loss</th>
-                <th>Accuracy</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+          <div class="table-responsive">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Duration</th>
+                  <th>Initial Bank</th>
+                  <th>Total Trades</th>
+                  <th>Total Gain/Loss</th>
+                  <th>Accuracy</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </div>
     `;
@@ -724,13 +771,19 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // --- CALCULATORS SECTION (Two columns on desktop) ---
+  // --- CALCULATORS SECTION (Interface por abas) ---
   function renderCalculatorsPage() {
     const calculatorsHTML = `
       <h2>Calculators</h2>
-      <div class="calc-row">
-        <div class="calc-column">
-          <div class="calculators-section" id="riskCalculator">
+      <div class="calc-tabs">
+        <span class="calc-tab active" data-target="riskCalc">Risk</span>
+        <span class="calc-tab" data-target="compoundCalc">Compound</span>
+        <span class="calc-tab" data-target="predictionCalc">Prediction</span>
+        <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
+      </div>
+      <div class="calc-content">
+        <div id="riskCalc" class="calc-item active">
+          <div class="calculators-section">
             <h3>Risk Calculator</h3>
             <label for="riskInitialBank">Initial Bank ($):</label>
             <input type="number" id="riskInitialBank" placeholder="Enter your bank" />
@@ -738,10 +791,14 @@ document.addEventListener("DOMContentLoaded", function() {
             <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
             <button id="calcRiskBtn">Calculate Risk</button>
             <p id="riskResult"></p>
+            <p class="calc-explanation">
+              This calculator determines the amount you should risk per trade based on a percentage of your bank.
+              <br><strong>Example:</strong> With a $1000 bank and 2% risk, you risk $20 per trade.
+            </p>
           </div>
         </div>
-        <div class="calc-column">
-          <div class="calculators-section" id="compoundCalculator">
+        <div id="compoundCalc" class="calc-item">
+          <div class="calculators-section">
             <h3>Compound Interest Calculator</h3>
             <label for="compoundPrincipal">Principal ($):</label>
             <input type="number" id="compoundPrincipal" placeholder="Enter principal" />
@@ -757,12 +814,14 @@ document.addEventListener("DOMContentLoaded", function() {
             <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
             <button id="calcCompoundBtn">Calculate</button>
             <p id="compoundResult"></p>
+            <p class="calc-explanation">
+              This calculator computes the future value of your investment by applying compound growth.
+              <br><strong>Example:</strong> A $1000 principal, at 12% annual rate compounded monthly for 12 months.
+            </p>
           </div>
         </div>
-      </div>
-      <div class="calc-row">
-        <div class="calc-column">
-          <div class="calculators-section" id="predictionCalculator">
+        <div id="predictionCalc" class="calc-item">
+          <div class="calculators-section">
             <h3>Session Prediction Calculator</h3>
             <label for="predInitialBank">Initial Bank ($):</label>
             <input type="number" id="predInitialBank" placeholder="Enter your bank" />
@@ -772,10 +831,14 @@ document.addEventListener("DOMContentLoaded", function() {
             <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
             <button id="calcPredictionBtn">Predict Final Bank</button>
             <p id="predictionResult"></p>
+            <p class="calc-explanation">
+              This calculator predicts your final bank balance based on the average profit/loss per trade and the number of trades.
+              <br><strong>Example:</strong> A $1000 bank, 10 trades with an average profit of $20 per trade results in $1200.
+            </p>
           </div>
         </div>
-        <div class="calc-column">
-          <div class="calculators-section" id="stopLossCalculator">
+        <div id="stopLossCalc" class="calc-item">
+          <div class="calculators-section">
             <h3>Stop Loss Calculator</h3>
             <label for="stopInitialBank">Initial Bank ($):</label>
             <input type="number" id="stopInitialBank" placeholder="Enter your bank" />
@@ -785,18 +848,32 @@ document.addEventListener("DOMContentLoaded", function() {
             <input type="number" id="entryPrice" placeholder="Enter entry price" />
             <button id="calcStopLossBtn">Calculate Stop Loss</button>
             <p id="stopLossResult"></p>
+            <p class="calc-explanation">
+              This calculator helps determine your stop loss price based on your risk percentage and entry price.
+              <br><strong>Example:</strong> With a $1000 bank and 2% risk at an entry price of $50.
+            </p>
           </div>
         </div>
       </div>
     `;
     document.getElementById("mainContent").innerHTML = calculatorsHTML;
+    document.querySelectorAll(".calc-tab").forEach(tab => {
+      tab.addEventListener("click", function() {
+        document.querySelectorAll(".calc-tab").forEach(t => t.classList.remove("active"));
+        this.classList.add("active");
+        const target = this.getAttribute("data-target");
+        document.querySelectorAll(".calc-item").forEach(item => item.classList.remove("active"));
+        document.getElementById(target).classList.add("active");
+      });
+    });
+    // Bind dos botões das calculadoras
     document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
     document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
     document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
     document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
   }
-
-  // Calculator functions
+  
+  // Funções das calculadoras
   function calcRisk() {
     const bank = parseFloat(document.getElementById("riskInitialBank").value);
     const riskPct = parseFloat(document.getElementById("riskPercentage").value);
@@ -807,7 +884,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const riskValue = (riskPct / 100) * bank;
     document.getElementById("riskResult").textContent = `Risk per trade: $${riskValue.toFixed(2)}`;
   }
-
+  
   function calcCompound() {
     const principal = parseFloat(document.getElementById("compoundPrincipal").value);
     const rate = parseFloat(document.getElementById("compoundRate").value);
@@ -827,7 +904,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     document.getElementById("compoundResult").textContent = `Future Value: $${futureValue.toFixed(2)}`;
   }
-
+  
   function calcPrediction() {
     const bank = parseFloat(document.getElementById("predInitialBank").value);
     const tradeCount = parseInt(document.getElementById("predTradeCount").value);
@@ -839,7 +916,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const finalBank = bank + (tradeCount * avgProfit);
     document.getElementById("predictionResult").textContent = `Predicted Final Bank: $${finalBank.toFixed(2)}`;
   }
-
+  
   function calcStopLoss() {
     const bank = parseFloat(document.getElementById("stopInitialBank").value);
     const riskPct = parseFloat(document.getElementById("stopRiskPercentage").value);
