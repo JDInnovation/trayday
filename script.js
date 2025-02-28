@@ -207,9 +207,9 @@ document.addEventListener("DOMContentLoaded", function() {
     const tabsHTML = `
       <div class="article-tabs">
         <span class="article-tab active" data-category="all">All</span>
-        <span class="article-tab" data-category="noticia">Notícia</span>
-        <span class="article-tab" data-category="análises">Análises</span>
-        <span class="article-tab" data-category="informação">Informação</span>
+        <span class="article-tab" data-category="noticia">News</span>
+        <span class="article-tab" data-category="análises">Analytics</span>
+        <span class="article-tab" data-category="informação">Info</span>
       </div>
     `;
     document.getElementById("mainContent").innerHTML = tabsHTML + `<div id="articlesGrid"></div>`;
@@ -292,6 +292,15 @@ document.addEventListener("DOMContentLoaded", function() {
             <option value="aggressive">Aggressive</option>
           </select>
           <button id="startSessionBtn">Start Session</button>
+        </div>
+        <div class="session-info">
+          <h3>Session Guidelines</h3>
+          <p>
+            The objective of this scalping session is to capture small, consistent gains while managing your risk carefully. Every trade will be recorded so you can track your performance and learn from your results.
+          </p>
+          <p>
+            <strong>Important:</strong> Follow your predetermined rules and respect your stop-loss and profit targets. Avoid impulsive decisions; discipline is key to long-term success. Use this session to gather valuable data that will help refine your trading strategy.
+          </p>
         </div>
       </div>
     `;
@@ -597,14 +606,14 @@ document.addEventListener("DOMContentLoaded", function() {
     const seconds = parseInt(parts[2]);
     return hours * 3600 + minutes * 60 + seconds;
   }
-
+  
   function formatDuration(totalSeconds) {
     const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
     const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
     const seconds = String(totalSeconds % 60).padStart(2, "0");
     return `${hours}:${minutes}:${seconds}`;
   }
-
+  
   function getAggregateStats() {
     const totalSessions = sessionHistory.length;
     let totalTrades = 0;
@@ -646,7 +655,7 @@ document.addEventListener("DOMContentLoaded", function() {
       avgDuration
     };
   }
-
+  
   function renderResultsPage() {
     const stats = getAggregateStats();
     const aggHTML = `
@@ -703,7 +712,7 @@ document.addEventListener("DOMContentLoaded", function() {
     initResultsBarChart(sessionHistory);
     initResultsPieChart(sessionHistory);
   }
-
+  
   function renderResultsTable(sessions) {
     const tbody = document.querySelector("#resultsTable tbody");
     tbody.innerHTML = "";
@@ -722,7 +731,7 @@ document.addEventListener("DOMContentLoaded", function() {
       tbody.appendChild(row);
     });
   }
-
+  
   function initResultsBarChart(sessions) {
     const ctx = document.getElementById("resultsBarChart").getContext("2d");
     resultsChart = new Chart(ctx, {
@@ -745,7 +754,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
   }
-
+  
   function initResultsPieChart(sessions) {
     const profitCount = sessions.filter(s => s.totalGainLoss > 0).length;
     const lossCount = sessions.filter(s => s.totalGainLoss <= 0).length;
@@ -770,7 +779,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
   }
-
+  
   // --- CALCULATORS SECTION (Interface por abas) ---
   function renderCalculatorsPage() {
     const calculatorsHTML = `
