@@ -43,7 +43,7 @@ body {
   width: 80px;
 }
 .sidebar:hover {
-  transform: scale(1.02);
+  transform: scale(1.00);
 }
 /* Oculta textos e área de usuário quando recolhido */
 .sidebar.collapsed .menu-text,
@@ -117,8 +117,9 @@ body {
   flex: 1;
   padding: 40px;
   background-color: #1e1e1e;
-  border-left: 3px solid var(--accent-color);
+  border-left: 1px solid var(--accent-color);
   animation: fadeIn 0.5s ease-out;
+  box-shadow: 0 0 20px #00000078, 0 0 40px #000000a0;
 }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
@@ -229,6 +230,8 @@ th {
   background-color: #2a2a2a;
   padding: 15px;
   border-radius: 4px;
+  border: 1px solid var(--accent-color);
+  box-shadow: rgba(0, 0, 0, 0.407) 0px 0px 20px, rgba(0, 0, 0, 0.481) 0px 0px 15px;
 }
 .dashboard-column.full-width {
   flex: none;
@@ -256,10 +259,13 @@ th {
 
 /* Aggregate stats (Results) */
 .aggregate-stats {
-  background-color: var(--secondary-color);
+  background-color: #2A2A2A;
   padding: 15px;
   border-radius: 4px;
   margin-bottom: 20px;
+  border: 1px solid var(--accent-color);
+  box-shadow: rgba(0, 0, 0, 0.407) 0px 0px 20px, rgba(0, 0, 0, 0.481) 0px 0px 15px;
+  text-align: center;
 }
 .aggregate-stats h3 {
   margin-bottom: 10px;
@@ -270,19 +276,10 @@ th {
   margin-bottom: 5px;
 }
 
-/* Home - Abas de categorias (exibidas horizontalmente em mobile) */
-/* Estilo para a imagem principal do artigo */
-.article-main-img {
-  width: 100%;
-  max-height: 300px;
-  object-fit: cover;
-  margin-bottom: 20px;
-  border-radius: 4px;
-}
-
+/* Home - Abas de categorias */
 .article-tabs {
   display: flex;
-  gap: 20px;
+  gap: 14px;
   margin-bottom: 20px;
   border-bottom: 2px solid var(--secondary-color);
   overflow-x: auto;
@@ -312,10 +309,11 @@ th {
   border-radius: 4px;
   transition: box-shadow 0.3s ease, transform 0.3s ease;
   cursor: pointer;
+  box-shadow: rgba(0, 0, 0, 0.407) 0px 0px 20px, rgba(0, 0, 0, 0.481) 0px 0px 15px;
 }
 .article-card:hover {
   box-shadow: 0 0 8px var(--accent-color);
-  transform: scale(1.02);
+  transform: scale(1.01);
 }
 .article-card img {
   max-width: 100%;
@@ -347,12 +345,20 @@ th {
   cursor: pointer;
   margin-bottom: 20px;
 }
+/* Estilo para a imagem principal do artigo na página individual */
+.article-main-img {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  margin-bottom: 20px;
+  border-radius: 4px;
+}
 
 /* Neon effect para a tela de iniciar sessão (Scalping) */
 .neon-box {
-  background-color: #1e1e1e;
-  border: 2px solid var(--accent-color);
-  box-shadow: 0 0 10px var(--accent-color), 0 0 20px var(--accent-color);
+  background-color: #2A2A2A;
+  border: 1px solid var(--accent-color);
+  box-shadow: 0 0 4px #00d8ff30, 0 0 10px #00d8ff4d;
   border-radius: 8px;
   padding: 20px;
   margin: 50px auto;
@@ -380,10 +386,12 @@ th {
   border-bottom: 2px solid var(--accent-color);
 }
 .calc-content {
-  background-color: var(--secondary-color);
+  background-color: #2A2A2A;
   padding: 20px;
   border-radius: 4px;
   text-align: center;
+  border: 1px solid var(--accent-color);
+  box-shadow: rgba(0, 0, 0, 0.407) 0px 0px 20px, rgba(0, 0, 0, 0.481) 0px 0px 15px;
 }
 .calc-item {
   display: none;
@@ -397,9 +405,7 @@ th {
   color: var(--accent-color);
 }
 
-/* Responsive para abas de calculadoras: em mobile, as abas ficam em linha (já configurado com overflow-x) */
-
-/* Responsive ajustes para mobile */
+/* Responsive para abas de calculadoras e categorias: em mobile, as abas ficam em linha */
 @media (max-width: 768px) {
   .container {
     flex-direction: column;
@@ -420,7 +426,7 @@ th {
     margin-bottom: 0;
   }
   .sidebar ul li a {
-    font-size: 16px;
+    font-size: 12px;
     padding: 8px;
   }
   .main-content {
@@ -430,6 +436,11 @@ th {
   }
   .dashboard-row {
     flex-direction: column;
+  }
+  .logo-img {
+    width: 60%;
+    margin-top: 20px;
+    margin-bottom: 5px;
   }
 }
 @media (max-width: 480px) {
