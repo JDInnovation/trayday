@@ -12,16 +12,44 @@ import {
   addDoc, 
   query, 
   where, 
-  onSnapshot 
+  onSnapshot, 
+  doc, 
+  getDoc, 
+  setDoc,
+  orderBy
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
 document.addEventListener("DOMContentLoaded", function() {
-  // Variável para o usuário autenticado via Firebase
+  // Variáveis globais de autenticação e dados
   let currentUser = null;
-  // sessionHistory armazenará as sessões recuperadas do Firestore
+  let userProfile = {}; // Armazena dados do perfil (username, description)
   let sessionHistory = [];
-  // Variável para cancelar o listener em tempo real, se necessário
   let unsubscribeSessions = null;
+  let feedUnsubscribe = null; // Listener para o feed
+
+  // Verifica se há uma sessão ativa salva no localStorage
+  const activeSessionJSON = localStorage.getItem("activeSession");
+  let sessionData = {
+    initialBank: 0,
+    type: "normal", // soft, normal, aggressive
+    trades: [],
+    riskPerTrade: 0,
+    maxTrades: 0,
+    objectivePercent: 0
+  };
+  let sessionStartTime = null;
+  let sessionTimerInterval = null;
+
+  if (activeSessionJSON) {
+    try {
+      const activeSession = JSON.parse(activeSessionJSON);
+      sessionData = activeSession.sessionData;
+      sessionStartTime = new Date(activeSession.sessionStartTime);
+      sessionTimerInterval = setInterval(updateTimer, 1000);
+    } catch(e) {
+      console.error("Erro ao carregar sessão ativa:", e);
+    }
+  }
 
   // Dummy articles para a Home
   const dummyArticles = [
@@ -57,33 +85,18 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   ];
 
-  // Variáveis para a sessão de scalping
-  let sessionStartTime;
-  let sessionTimerInterval;
-  let sessionData = {
-    initialBank: 0,
-    type: "normal", // soft, normal, aggressive
-    trades: [],
-    riskPerTrade: 0,
-    maxTrades: 0,
-    objectivePercent: 0
-  };
-
-  // Variáveis para gráficos
-  let performanceChart;
-  let resultsChart;
-
-  // Mapeamento de ícones para o menu
+  // Ícones do menu (adicionamos 'feed')
   const iconMap = {
     home: '<i class="fas fa-home menu-icon"></i>',
     sessao: '<i class="fas fa-chart-line menu-icon"></i>',
     resultados: '<i class="fas fa-table menu-icon"></i>',
     calculators: '<i class="fas fa-calculator menu-icon"></i>',
     perfil: '<i class="fas fa-user menu-icon"></i>',
+    feed: '<i class="fas fa-rss menu-icon"></i>',
     login: '<i class="fas fa-sign-in-alt menu-icon"></i>'
   };
 
-  // Atualiza o menu
+  // Atualiza o menu lateral
   function updateMenu() {
     const menuLinks = document.getElementById("menuLinks");
     menuLinks.innerHTML = "";
@@ -94,7 +107,8 @@ document.addEventListener("DOMContentLoaded", function() {
         { hash: "#sessao", label: "Scalping", key: "sessao" },
         { hash: "#resultados", label: "Results", key: "resultados" },
         { hash: "#calculators", label: "Calculators", key: "calculators" },
-        { hash: "#perfil", label: "Profile", key: "perfil" }
+        { hash: "#perfil", label: "Profile", key: "perfil" },
+        { hash: "#feed", label: "Feed", key: "feed" }
       ];
     } else {
       items = [
@@ -107,6 +121,10 @@ document.addEventListener("DOMContentLoaded", function() {
       const a = document.createElement("a");
       a.href = item.hash;
       a.innerHTML = iconMap[item.key] + '<span class="menu-text">' + item.label + "</span>";
+      // Se a sessão está ativa e este é o link de Scalping, adiciona o badge
+      if (item.hash === "#sessao" && sessionStartTime) {
+        a.innerHTML += ' <span class="active-session-indicator">Active</span>';
+      }
       a.setAttribute("data-section", item.hash.substring(1));
       li.appendChild(a);
       menuLinks.appendChild(li);
@@ -114,45 +132,20 @@ document.addEventListener("DOMContentLoaded", function() {
     updateUserStatus();
   }
 
+  // Atualiza a área de status do usuário (usa username se definido)
   function updateUserStatus() {
     const userStatus = document.getElementById("userStatus");
     if (currentUser) {
-      userStatus.innerHTML = `Hello, <strong>${currentUser.email}</strong> | <a href="#" id="logoutLink">Logout</a>`;
+      const displayName = userProfile.username ? userProfile.username : currentUser.email;
+      userStatus.innerHTML = `Hello, <strong>${displayName}</strong> | <a href="#" id="logoutLink">Logout</a>`;
       document.getElementById("logoutLink").addEventListener("click", logout);
     } else {
       userStatus.innerHTML = `<a href="#login">Login</a>`;
     }
   }
 
-  // Toggle da sidebar
-  document.getElementById("sidebarToggle").addEventListener("click", function() {
-    if (window.innerWidth > 768) {
-      const sidebar = document.getElementById("sidebar");
-      sidebar.classList.toggle("collapsed");
-      const logoImg = document.getElementById("logoImg");
-      logoImg.src = sidebar.classList.contains("collapsed") ? "traydayicon.png" : "trayday.png";
-    }
-  });
-
-  // Monitorar o estado de autenticação do Firebase
-  auth.onAuthStateChanged((user) => {
-    currentUser = user;
-    updateMenu();
-    if (currentUser) {
-      // Inicia o listener em tempo real para as sessões do usuário
-      startSessionsListener();
-    } else {
-      let section = window.location.hash.substring(1);
-      if (["perfil", "sessao", "resultados", "calculators"].includes(section)) {
-        window.location.hash = "login";
-      }
-      if (typeof unsubscribeSessions === "function") {
-        unsubscribeSessions();
-        unsubscribeSessions = null;
-      }
-    }
-  });
-
+  // Previne zoom em dispositivos móveis (verifique que o meta viewport no index.html contém user-scalable=no)
+  
   // Carrega o conteúdo com base no hash da URL
   function loadContent() {
     let section = window.location.hash.substring(1);
@@ -161,7 +154,7 @@ document.addEventListener("DOMContentLoaded", function() {
       renderArticlePage(section.substring(8));
       return;
     }
-    if ((["perfil", "calculators", "sessao", "resultados"].includes(section)) && !currentUser) {
+    if ((["perfil", "calculators", "sessao", "resultados", "feed"].includes(section)) && !currentUser) {
       window.location.hash = "login";
       return;
     }
@@ -189,6 +182,9 @@ document.addEventListener("DOMContentLoaded", function() {
         break;
       case "calculators":
         renderCalculatorsPage();
+        break;
+      case "feed":
+        renderFeed();
         break;
       default:
         document.getElementById("mainContent").innerHTML = `<h2>Section not found</h2>`;
@@ -233,7 +229,8 @@ document.addEventListener("DOMContentLoaded", function() {
       .then((userCredential) => {
         currentUser = userCredential.user;
         updateMenu();
-        window.location.hash = "home";
+        loadContent();
+        loadUserProfile(); // Carrega perfil ao logar
       })
       .catch((error) => {
         alert("Erro ao fazer login: " + error.message);
@@ -269,7 +266,9 @@ document.addEventListener("DOMContentLoaded", function() {
       .then((userCredential) => {
         currentUser = userCredential.user;
         updateMenu();
-        window.location.hash = "home";
+        loadContent();
+        // Cria perfil padrão
+        saveUserProfile({ username: email.split("@")[0], description: "" });
       })
       .catch((error) => {
         alert("Erro ao criar conta: " + error.message);
@@ -312,89 +311,71 @@ document.addEventListener("DOMContentLoaded", function() {
     signOut(auth)
       .then(() => {
         currentUser = null;
+        userProfile = {};
         updateMenu();
-        window.location.hash = "login";
+        localStorage.removeItem("activeSession");
+        loadContent();
       })
       .catch((error) => {
         alert("Erro ao fazer logout: " + error.message);
       });
   }
 
-  // --- HOME SECTION ---
-  function renderHome() {
-    const tabsHTML = `
-      <div class="article-tabs">
-        <span class="article-tab active" data-category="all">All</span>
-        <span class="article-tab" data-category="noticia">News</span>
-        <span class="article-tab" data-category="análises">Analytics</span>
-        <span class="article-tab" data-category="informação">Info</span>
-      </div>
-    `;
-    document.getElementById("mainContent").innerHTML = tabsHTML + `<div id="articlesGrid"></div>`;
-    renderArticles("all");
-    document.querySelectorAll(".article-tab").forEach(tab => {
-      tab.style.cursor = "pointer";
-      tab.addEventListener("click", function() {
-        document.querySelectorAll(".article-tab").forEach(t => t.classList.remove("active"));
-        this.classList.add("active");
-        renderArticles(this.getAttribute("data-category"));
-      });
-    });
-  }
-
-  function renderArticles(category) {
-    const grid = document.getElementById("articlesGrid");
-    let articlesHTML = `<div class="articles-grid">`;
-    dummyArticles.forEach(article => {
-      if (category === "all" || article.category === category) {
-        articlesHTML += `
-          <div class="article-card" data-category="${article.category}">
-            <img src="${article.thumbnail}" alt="Thumbnail" class="article-thumb" />
-            <h3>${article.title}</h3>
-            <p><em>By ${article.author} - ${article.date}</em></p>
-            <p>${article.excerpt}</p>
-            <a href="#article_${article.id}" class="read-more">Read More</a>
-          </div>
-        `;
-      }
-    });
-    articlesHTML += `</div>`;
-    document.getElementById("articlesGrid").innerHTML = articlesHTML;
-  }
-
-  // --- ARTICLE PAGE ---
-  function renderArticlePage(articleId) {
-    const id = parseInt(articleId);
-    const article = dummyArticles.find(a => a.id === id);
-    if (!article) {
-      document.getElementById("mainContent").innerHTML = "<h2>Article not found</h2>";
-      return;
+  // --- CARREGAR E SALVAR PERFIL DO USUÁRIO ---
+  async function loadUserProfile() {
+    if (!currentUser) return;
+    const userDocRef = doc(db, "users", currentUser.uid);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      userProfile = userDocSnap.data();
+    } else {
+      // Se não existir, cria um perfil padrão
+      userProfile = { username: currentUser.email.split("@")[0], description: "" };
+      await setDoc(userDocRef, userProfile);
     }
-    const articleHTML = `
-      <div class="article-page">
-        <button class="back-btn" onclick="window.history.back()">← Back</button>
-        <h2>${article.title}</h2>
-        <p><em>By ${article.author} - ${article.date}</em></p>
-        <img src="${article.thumbnail}" alt="Article Image" class="article-main-img" />
-        <div class="article-content">
-          <p>${article.content}</p>
-        </div>
-      </div>
-    `;
-    document.getElementById("mainContent").innerHTML = articleHTML;
+    updateUserStatus();
   }
-  
-  // --- PROFILE SECTION ---
+
+  async function saveUserProfile(profileData) {
+    if (!currentUser) return;
+    const userDocRef = doc(db, "users", currentUser.uid);
+    try {
+      await setDoc(userDocRef, profileData);
+      userProfile = profileData;
+      updateUserStatus();
+      alert("Perfil atualizado com sucesso!");
+    } catch(e) {
+      console.error("Erro ao salvar perfil:", e);
+      alert("Erro ao atualizar perfil.");
+    }
+  }
+
+  // --- RENDERIZAÇÃO DA PÁGINA DE PERFIL ---
   function renderProfile() {
     const profileHTML = `
-      <h2>My Profile</h2>
-      <p><strong>Email:</strong> ${currentUser.email}</p>
-      <p>Manage your information, view your posts, and track your activity.</p>
+      <h2>Meu Perfil</h2>
+      <form id="profileForm" class="session-form">
+        <label for="username">Nome de Usuário:</label>
+        <input type="text" id="username" placeholder="Digite seu nome" value="${userProfile.username || ''}" />
+        <label for="description">Descrição:</label>
+        <textarea id="description" placeholder="Fale um pouco sobre você...">${userProfile.description || ''}</textarea>
+        <button type="submit">Salvar Perfil</button>
+      </form>
     `;
     document.getElementById("mainContent").innerHTML = profileHTML;
+    document.getElementById("profileForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const username = document.getElementById("username").value.trim();
+      const description = document.getElementById("description").value.trim();
+      if (username === "") {
+        alert("O nome de usuário não pode ser vazio.");
+        return;
+      }
+      saveUserProfile({ username, description });
+    });
   }
 
-  // --- SCALPING SESSION ---
+  // --- RENDERIZAÇÃO DA SESSÃO DE SCALPING ---
   function renderSessionStart() {
     const sessionStartHTML = `
       <div class="neon-box">
@@ -445,6 +426,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     sessionStartTime = new Date();
     sessionTimerInterval = setInterval(updateTimer, 1000);
+    updateActiveSessionStorage();
     renderSessionDashboard();
   }
 
@@ -455,6 +437,17 @@ document.addEventListener("DOMContentLoaded", function() {
     const m = String(elapsed.getUTCMinutes()).padStart(2, "0");
     const s = String(elapsed.getUTCSeconds()).padStart(2, "0");
     document.getElementById("session-timer").textContent = `${h}:${m}:${s}`;
+    updateActiveSessionStorage();
+  }
+
+  function updateActiveSessionStorage() {
+    // Salva a sessão ativa no localStorage para persistência
+    const activeSession = {
+      sessionData: sessionData,
+      sessionStartTime: sessionStartTime
+    };
+    localStorage.setItem("activeSession", JSON.stringify(activeSession));
+    updateMenu(); // Atualiza o badge de sessão ativa no menu
   }
 
   function renderSessionDashboard() {
@@ -594,6 +587,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("progressFill").style.width = progress + "%";
     document.getElementById("progressText").textContent = `Progress: ${progress.toFixed(2)}%`;
     updateChart();
+    updateActiveSessionStorage();
   }
 
   function removeTrade(index) {
@@ -656,8 +650,8 @@ document.addEventListener("DOMContentLoaded", function() {
     };
     // Adiciona a sessão atual ao histórico em memória
     sessionHistory.push(sessionSummary);
-    // Armazena no Firestore
     await storeSessionData(sessionSummary);
+    localStorage.removeItem("activeSession");
     const summaryHTML = `
       <h2>Session Summary</h2>
       <div class="session-summary">
@@ -693,9 +687,9 @@ document.addEventListener("DOMContentLoaded", function() {
         type: sessionSummary.type,
         timestamp: new Date()
       });
-      console.log("Dados da sessão armazenados com sucesso.");
+      console.log("Sessão armazenada com sucesso.");
     } catch (error) {
-      console.error("Erro ao armazenar sessão: ", error);
+      console.error("Erro ao armazenar sessão:", error);
     }
   }
 
@@ -722,27 +716,21 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS COM FILTRO ---
+  // --- RESULTADOS: RENDERIZAÇÃO COM FILTRO ---
   async function renderResultsPage() {
-    // Obter o valor selecionado do filtro, se existir; caso contrário, usar "all"
+    // Obter valor do filtro (se já houver sido selecionado)
     let filterValue = "all";
     if (document.getElementById("filterSelect")) {
       filterValue = document.getElementById("filterSelect").value;
     }
-    
-    // Ordena as sessões por data de término (timestamp ou endTime)
+    // Ordena as sessões por data de término
     const sortedSessions = sessionHistory.sort((a, b) => {
-      if (a.timestamp && b.timestamp) {
-        return b.timestamp.toMillis() - a.timestamp.toMillis();
-      } else {
-        return new Date(b.endTime) - new Date(a.endTime);
-      }
+      if (!a.timestamp || !b.timestamp) return 0;
+      return b.timestamp.toMillis() - a.timestamp.toMillis();
     });
-    
-    // Aplica o filtro usando a data de término
+    // Aplica o filtro (usando a data de término)
     const filteredSessions = applyFilter(sortedSessions, filterValue);
-    
-    // Cria um header com o título e o seletor de filtro (à direita)
+    // Cabeçalho com título e seletor de filtro (à direita)
     const headerHTML = `
       <div class="results-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2>Session Results</h2>
@@ -761,7 +749,6 @@ document.addEventListener("DOMContentLoaded", function() {
         </div>
       </div>
     `;
-    
     const aggHTML = `
       <div class="aggregate-stats">
         <h3>Overall Performance</h3>
@@ -775,7 +762,6 @@ document.addEventListener("DOMContentLoaded", function() {
         <p><strong>Average Accuracy:</strong> ${(filteredSessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
       </div>
     `;
-    
     const resultsHTML = `
       ${headerHTML}
       ${aggHTML}
@@ -812,9 +798,7 @@ document.addEventListener("DOMContentLoaded", function() {
         </div>
       </div>
     `;
-    
     document.getElementById("mainContent").innerHTML = resultsHTML;
-    // Re-adiciona o listener para quando o usuário alterar o filtro
     document.getElementById("filterSelect").addEventListener("change", () => {
       renderResultsPage();
     });
@@ -828,7 +812,6 @@ document.addEventListener("DOMContentLoaded", function() {
     let filtered = sessions;
     switch(filterValue) {
       case "month":
-        // Início do mês
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         filtered = sessions.filter(s => new Date(s.endTime) >= startOfMonth);
         break;
@@ -837,7 +820,6 @@ document.addEventListener("DOMContentLoaded", function() {
         filtered = sessions.filter(s => new Date(s.endTime) >= startOfYear);
         break;
       case "week":
-        // Considerando que a semana começa na segunda
         const day = now.getDay();
         const diff = now.getDate() - (day === 0 ? 6 : day - 1);
         const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff);
@@ -867,7 +849,6 @@ document.addEventListener("DOMContentLoaded", function() {
     return filtered;
   }
 
-  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS (Tabela, Gráficos) ---
   function renderResultsTable(sessions) {
     const tbody = document.querySelector("#resultsTable tbody");
     tbody.innerHTML = "";
@@ -935,70 +916,502 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // --- TERMINAR SESSÃO E ARMAZENAR NO FIRESTORE ---
-  async function terminateSession() {
-    if (!confirm("Are you sure you want to end the session?")) return;
-    clearInterval(sessionTimerInterval);
-    const endTime = new Date();
-    const durationMs = endTime - sessionStartTime;
-    const d = new Date(durationMs);
-    const totalDuration = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")}`;
-    const totalTrades = sessionData.trades.length;
-    const totalGainLoss = sessionData.trades.reduce((sum, trade) => sum + trade.value, 0);
-    const wins = sessionData.trades.filter(trade => trade.value > 0).length;
-    const accuracy = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(2) : 0;
-    const sessionSummary = {
-      startTime: sessionStartTime,
-      endTime: endTime,
-      duration: totalDuration,
-      initialBank: sessionData.initialBank,
-      totalTrades: totalTrades,
-      totalGainLoss: totalGainLoss,
-      accuracy: accuracy,
-      type: sessionData.type
-    };
-    // Adiciona a sessão atual ao histórico em memória
-    sessionHistory.push(sessionSummary);
-    // Armazena no Firestore
-    await storeSessionData(sessionSummary);
-    const summaryHTML = `
-      <h2>Session Summary</h2>
-      <div class="session-summary">
-        <p><strong>Start:</strong> ${sessionSummary.startTime.toLocaleString()}</p>
-        <p><strong>End:</strong> ${sessionSummary.endTime.toLocaleString()}</p>
-        <p><strong>Duration:</strong> ${sessionSummary.duration}</p>
-        <p><strong>Initial Bank:</strong> $${sessionSummary.initialBank.toFixed(2)}</p>
-        <p><strong>Total Trades:</strong> ${sessionSummary.totalTrades}</p>
-        <p><strong>Total Gain/Loss:</strong> $${sessionSummary.totalGainLoss.toFixed(2)}</p>
-        <p><strong>Accuracy:</strong> ${sessionSummary.accuracy}%</p>
+  // --- FEED: NOVA ABA PARA POSTS DOS USUÁRIOS ---
+  function renderFeed() {
+    const feedHTML = `
+      <h2>Feed</h2>
+      <div class="feed-post-form">
+        <textarea id="postContent" placeholder="Escreva seu post aqui..."></textarea>
+        <button id="postBtn">Postar</button>
       </div>
-      <button id="backSessionBtn">Back</button>
-      <button id="exportSessionBtn">Export Results</button>
+      <div id="feedPosts" class="feed-posts"></div>
     `;
-    document.getElementById("mainContent").innerHTML = summaryHTML;
-    document.getElementById("backSessionBtn").addEventListener("click", () => {
-      window.location.hash = "home";
-    });
-    document.getElementById("exportSessionBtn").addEventListener("click", exportSessionResults);
+    document.getElementById("mainContent").innerHTML = feedHTML;
+    document.getElementById("postBtn").addEventListener("click", createPost);
+    startFeedListener();
   }
 
-  async function storeSessionData(sessionSummary) {
+  function startFeedListener() {
+    const postsRef = collection(db, "posts");
+    const q = query(postsRef, orderBy("timestamp", "desc"));
+    if (typeof feedUnsubscribe === "function") {
+      feedUnsubscribe();
+    }
+    feedUnsubscribe = onSnapshot(q, (snapshot) => {
+      const posts = [];
+      snapshot.forEach(doc => {
+        posts.push({ id: doc.id, ...doc.data() });
+      });
+      renderFeedPosts(posts);
+    }, (error) => {
+      console.error("Erro no feed onSnapshot:", error);
+    });
+  }
+
+  function renderFeedPosts(posts) {
+    const feedContainer = document.getElementById("feedPosts");
+    if (!feedContainer) return;
+    let postsHTML = "";
+    posts.forEach(post => {
+      postsHTML += `
+        <div class="feed-post">
+          <p>${post.content}</p>
+          <div class="feed-post-info">
+            <span class="feed-post-author">${post.author || currentUser.email}</span>
+            <span class="feed-post-timestamp">${new Date(post.timestamp.seconds * 1000).toLocaleString()}</span>
+          </div>
+        </div>
+      `;
+    });
+    feedContainer.innerHTML = postsHTML;
+  }
+
+  async function createPost() {
+    const content = document.getElementById("postContent").value.trim();
+    if (!content) {
+      alert("Escreva algo para postar.");
+      return;
+    }
     try {
-      await addDoc(collection(db, "sessions"), {
+      await addDoc(collection(db, "posts"), {
         uid: currentUser.uid,
-        startTime: sessionSummary.startTime,
-        endTime: sessionSummary.endTime,
-        duration: sessionSummary.duration,
-        initialBank: sessionSummary.initialBank,
-        totalTrades: sessionSummary.totalTrades,
-        totalGainLoss: sessionSummary.totalGainLoss,
-        accuracy: sessionSummary.accuracy,
-        type: sessionSummary.type,
+        content: content,
+        author: userProfile.username ? userProfile.username : currentUser.email,
         timestamp: new Date()
       });
-      console.log("Dados da sessão armazenados com sucesso.");
+      document.getElementById("postContent").value = "";
     } catch (error) {
-      console.error("Erro ao armazenar sessão: ", error);
+      console.error("Erro ao criar post:", error);
+      alert("Erro ao postar, tente novamente.");
+    }
+  }
+
+  // --- CALCULATORS SECTION ---
+  function renderCalculatorsPage() {
+    const calculatorsHTML = `
+      <h2>Calculators</h2>
+      <div class="calc-tabs">
+        <span class="calc-tab active" data-target="riskCalc">Risk</span>
+        <span class="calc-tab" data-target="compoundCalc">Compound</span>
+        <span class="calc-tab" data-target="predictionCalc">Prediction</span>
+        <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
+      </div>
+      <div class="calc-content">
+        <div id="riskCalc" class="calc-item active">
+          <div class="calculators-section">
+            <h3>Risk Calculator</h3>
+            <label for="riskInitialBank">Initial Bank ($):</label>
+            <input type="number" id="riskInitialBank" placeholder="Enter your bank" />
+            <label for="riskPercentage">Risk Percentage (%):</label>
+            <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
+            <button id="calcRiskBtn">Calculate Risk</button>
+            <p id="riskResult"></p>
+          </div>
+        </div>
+        <div id="compoundCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Compound Interest Calculator</h3>
+            <label for="compoundPrincipal">Principal ($):</label>
+            <input type="number" id="compoundPrincipal" placeholder="Enter principal" />
+            <label for="compoundRate">Interest Rate (%):</label>
+            <input type="number" id="compoundRate" placeholder="Enter rate" />
+            <label for="compoundBasis">Calculation Basis:</label>
+            <select id="compoundBasis">
+              <option value="sessions">Sessions</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <label for="compoundPeriods">Number of Periods:</label>
+            <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
+            <button id="calcCompoundBtn">Calculate</button>
+            <p id="compoundResult"></p>
+          </div>
+        </div>
+        <div id="predictionCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Session Prediction Calculator</h3>
+            <label for="predInitialBank">Initial Bank ($):</label>
+            <input type="number" id="predInitialBank" placeholder="Enter your bank" />
+            <label for="predTradeCount">Number of Trades:</label>
+            <input type="number" id="predTradeCount" placeholder="Enter number of trades" />
+            <label for="predAvgProfit">Average Profit/Loss per Trade ($):</label>
+            <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
+            <button id="calcPredictionBtn">Predict Final Bank</button>
+            <p id="predictionResult"></p>
+          </div>
+        </div>
+        <div id="stopLossCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Stop Loss Calculator</h3>
+            <label for="stopInitialBank">Initial Bank ($):</label>
+            <input type="number" id="stopInitialBank" placeholder="Enter your bank" />
+            <label for="stopRiskPercentage">Risk Percentage per Trade (%):</label>
+            <input type="number" id="stopRiskPercentage" placeholder="Enter risk percentage" />
+            <label for="entryPrice">Entry Price ($):</label>
+            <input type="number" id="entryPrice" placeholder="Enter entry price" />
+            <button id="calcStopLossBtn">Calculate Stop Loss</button>
+            <p id="stopLossResult"></p>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = calculatorsHTML;
+    document.querySelectorAll(".calc-tab").forEach(tab => {
+      tab.addEventListener("click", function() {
+        document.querySelectorAll(".calc-tab").forEach(t => t.classList.remove("active"));
+        this.classList.add("active");
+        const target = this.getAttribute("data-target");
+        document.querySelectorAll(".calc-item").forEach(item => item.classList.remove("active"));
+        document.getElementById(target).classList.add("active");
+      });
+    });
+    document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
+    document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
+    document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
+    document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
+  }
+
+  function calcRisk() {
+    const bank = parseFloat(document.getElementById("riskInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("riskPercentage").value);
+    if (isNaN(bank) || isNaN(riskPct)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskValue = (riskPct / 100) * bank;
+    document.getElementById("riskResult").textContent = `Risk per trade: $${riskValue.toFixed(2)}`;
+  }
+
+  function calcCompound() {
+    const principal = parseFloat(document.getElementById("compoundPrincipal").value);
+    const rate = parseFloat(document.getElementById("compoundRate").value);
+    const basis = document.getElementById("compoundBasis").value;
+    const periods = parseInt(document.getElementById("compoundPeriods").value);
+    if (isNaN(principal) || isNaN(rate) || isNaN(periods)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    let futureValue;
+    if (basis === "sessions") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    } else if (basis === "monthly") {
+      futureValue = principal * Math.pow(1 + (rate / 100) / 12, periods);
+    } else if (basis === "yearly") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    }
+    document.getElementById("compoundResult").textContent = `Future Value: $${futureValue.toFixed(2)}`;
+  }
+
+  function calcPrediction() {
+    const bank = parseFloat(document.getElementById("predInitialBank").value);
+    const tradeCount = parseInt(document.getElementById("predTradeCount").value);
+    const avgProfit = parseFloat(document.getElementById("predAvgProfit").value);
+    if (isNaN(bank) || isNaN(tradeCount) || isNaN(avgProfit)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const finalBank = bank + (tradeCount * avgProfit);
+    document.getElementById("predictionResult").textContent = `Predicted Final Bank: $${finalBank.toFixed(2)}`;
+  }
+
+  function calcStopLoss() {
+    const bank = parseFloat(document.getElementById("stopInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("stopRiskPercentage").value);
+    const entryPrice = parseFloat(document.getElementById("entryPrice").value);
+    if (isNaN(bank) || isNaN(riskPct) || isNaN(entryPrice)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskAmount = (riskPct / 100) * bank;
+    const stopLossPrice = entryPrice - riskAmount;
+    document.getElementById("stopLossResult").textContent = `Suggested Stop Loss Price: $${stopLossPrice.toFixed(2)}`;
+  }
+
+  // --- LISTENER EM TEMPO REAL PARA AS SESSÕES ---
+  function startSessionsListener() {
+    if (!currentUser) return;
+    const sessionsRef = collection(db, "sessions");
+    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+    if (typeof unsubscribeSessions === "function") {
+      unsubscribeSessions();
+    }
+    unsubscribeSessions = onSnapshot(q, (snapshot) => {
+      const sessions = [];
+      snapshot.forEach(doc => {
+        sessions.push({ id: doc.id, ...doc.data() });
+      });
+      sessionHistory = sessions;
+      console.log("Sessões em tempo real:", sessionHistory);
+      if (window.location.hash === "#resultados") {
+        renderResultsPage();
+      }
+    }, (error) => {
+      console.error("Erro no onSnapshot:", error);
+    });
+  }
+
+  // --- RESULTADOS: RENDERIZAÇÃO COM FILTRO ---
+  async function renderResultsPage() {
+    let filterValue = "all";
+    if (document.getElementById("filterSelect")) {
+      filterValue = document.getElementById("filterSelect").value;
+    }
+    const sortedSessions = sessionHistory.sort((a, b) => {
+      if (!a.timestamp || !b.timestamp) return 0;
+      return b.timestamp.toMillis() - a.timestamp.toMillis();
+    });
+    const filteredSessions = applyFilter(sortedSessions, filterValue);
+    const headerHTML = `
+      <div class="results-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Session Results</h2>
+        <div class="results-filter">
+          <select id="filterSelect">
+            <option value="all" ${filterValue==="all" ? "selected" : ""}>Todas as sessões</option>
+            <option value="month" ${filterValue==="month" ? "selected" : ""}>Início do mês até agora</option>
+            <option value="year" ${filterValue==="year" ? "selected" : ""}>Início do ano até agora</option>
+            <option value="week" ${filterValue==="week" ? "selected" : ""}>Início da semana até agora</option>
+            <option value="last10" ${filterValue==="last10" ? "selected" : ""}>Últimas 10 sessões</option>
+            <option value="last25" ${filterValue==="last25" ? "selected" : ""}>Últimas 25 sessões</option>
+            <option value="last50" ${filterValue==="last50" ? "selected" : ""}>Últimas 50 sessões</option>
+            <option value="last100" ${filterValue==="last100" ? "selected" : ""}>Últimas 100 sessões</option>
+            <option value="last3months" ${filterValue==="last3months" ? "selected" : ""}>Últimos 3 meses</option>
+          </select>
+        </div>
+      </div>
+    `;
+    const aggHTML = `
+      <div class="aggregate-stats">
+        <h3>Overall Performance</h3>
+        <p><strong>Total Sessions:</strong> ${filteredSessions.length}</p>
+        <p><strong>Total Trades:</strong> ${filteredSessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
+        <p><strong>Total Gain/Loss:</strong> $${filteredSessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
+        <p><strong>Average Profit (%):</strong> ${(filteredSessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
+        <p><strong>Average Session Duration:</strong> --</p>
+        <p><strong>Best Session:</strong> $${Math.max(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Worst Session:</strong> $${Math.min(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Average Accuracy:</strong> ${(filteredSessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
+      </div>
+    `;
+    const resultsHTML = `
+      ${headerHTML}
+      ${aggHTML}
+      <div class="dashboard-row">
+        <div class="dashboard-column">
+          <h3>Profit/Loss Chart</h3>
+          <canvas id="resultsBarChart"></canvas>
+        </div>
+        <div class="dashboard-column">
+          <h3>Profit Distribution</h3>
+          <canvas id="resultsPieChart"></canvas>
+        </div>
+      </div>
+      <div class="dashboard-row">
+        <div class="dashboard-column full-width">
+          <h3>Detailed Session Table</h3>
+          <div class="table-responsive">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Duration</th>
+                  <th>Initial Bank</th>
+                  <th>Total Trades</th>
+                  <th>Total Gain/Loss</th>
+                  <th>Accuracy</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = resultsHTML;
+    document.getElementById("filterSelect").addEventListener("change", () => {
+      renderResultsPage();
+    });
+    renderResultsTable(filteredSessions);
+    initResultsBarChart(filteredSessions);
+    initResultsPieChart(filteredSessions);
+  }
+  
+  function applyFilter(sessions, filterValue) {
+    const now = new Date();
+    let filtered = sessions;
+    switch(filterValue) {
+      case "month":
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfMonth);
+        break;
+      case "year":
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfYear);
+        break;
+      case "week":
+        const day = now.getDay();
+        const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+        const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfWeek);
+        break;
+      case "last10":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 10);
+        break;
+      case "last25":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 25);
+        break;
+      case "last50":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 50);
+        break;
+      case "last100":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 100);
+        break;
+      case "last3months":
+        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        filtered = sessions.filter(s => new Date(s.endTime) >= threeMonthsAgo);
+        break;
+      case "all":
+      default:
+        filtered = sessions;
+        break;
+    }
+    return filtered;
+  }
+
+  function renderResultsTable(sessions) {
+    const tbody = document.querySelector("#resultsTable tbody");
+    tbody.innerHTML = "";
+    sessions.forEach((s, index) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${new Date(s.startTime).toLocaleString()}</td>
+        <td>${new Date(s.endTime).toLocaleString()}</td>
+        <td>${s.duration}</td>
+        <td>$${s.initialBank.toFixed(2)}</td>
+        <td>${s.totalTrades}</td>
+        <td>$${s.totalGainLoss.toFixed(2)}</td>
+        <td>${s.accuracy}%</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+  
+  function initResultsBarChart(sessions) {
+    const ctx = document.getElementById("resultsBarChart").getContext("2d");
+    resultsChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: sessions.map((s, i) => `Session ${i + 1}`),
+        datasets: [{
+          label: "Total Gain/Loss ($)",
+          data: sessions.map(s => s.totalGainLoss),
+          backgroundColor: "rgba(0, 216, 255, 0.5)",
+          borderColor: "rgba(0, 216, 255, 1)",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Sessions" } },
+          y: { title: { display: true, text: "Gain/Loss ($)" }, beginAtZero: true }
+        }
+      }
+    });
+  }
+  
+  function initResultsPieChart(sessions) {
+    const profitCount = sessions.filter(s => s.totalGainLoss > 0).length;
+    const lossCount = sessions.filter(s => s.totalGainLoss <= 0).length;
+    const ctx = document.getElementById("resultsPieChart").getContext("2d");
+    new Chart(ctx, {
+      type: "pie",
+      data: {
+        labels: ["Profitable Sessions", "Losing Sessions"],
+        datasets: [{
+          data: [profitCount, lossCount],
+          backgroundColor: [
+            "rgba(0, 216, 255, 0.7)",
+            "rgba(255, 0, 0, 0.7)"
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "bottom" }
+        }
+      }
+    });
+  }
+
+  // --- FEED: NOVA ABA ---
+  function renderFeed() {
+    const feedHTML = `
+      <h2>Feed</h2>
+      <div class="feed-post-form">
+        <textarea id="postContent" placeholder="Escreva seu post aqui..."></textarea>
+        <button id="postBtn">Postar</button>
+      </div>
+      <div id="feedPosts" class="feed-posts"></div>
+    `;
+    document.getElementById("mainContent").innerHTML = feedHTML;
+    document.getElementById("postBtn").addEventListener("click", createPost);
+    startFeedListener();
+  }
+
+  function startFeedListener() {
+    const postsRef = collection(db, "posts");
+    const q = query(postsRef, orderBy("timestamp", "desc"));
+    if (typeof feedUnsubscribe === "function") {
+      feedUnsubscribe();
+    }
+    feedUnsubscribe = onSnapshot(q, (snapshot) => {
+      const posts = [];
+      snapshot.forEach(doc => {
+        posts.push({ id: doc.id, ...doc.data() });
+      });
+      renderFeedPosts(posts);
+    }, (error) => {
+      console.error("Erro no feed onSnapshot:", error);
+    });
+  }
+
+  function renderFeedPosts(posts) {
+    const feedContainer = document.getElementById("feedPosts");
+    let postsHTML = "";
+    posts.forEach(post => {
+      postsHTML += `
+        <div class="feed-post">
+          <p>${post.content}</p>
+          <div class="feed-post-info">
+            <span class="feed-post-author">${post.author || currentUser.email}</span>
+            <span class="feed-post-timestamp">${new Date(post.timestamp.seconds * 1000).toLocaleString()}</span>
+          </div>
+        </div>
+      `;
+    });
+    feedContainer.innerHTML = postsHTML;
+  }
+
+  async function createPost() {
+    const content = document.getElementById("postContent").value.trim();
+    if (!content) {
+      alert("Escreva algo para postar.");
+      return;
+    }
+    try {
+      await addDoc(collection(db, "posts"), {
+        uid: currentUser.uid,
+        content: content,
+        author: userProfile.username ? userProfile.username : currentUser.email,
+        timestamp: new Date()
+      });
+      document.getElementById("postContent").value = "";
+    } catch (error) {
+      console.error("Erro ao criar post:", error);
+      alert("Erro ao postar, tente novamente.");
     }
   }
 
