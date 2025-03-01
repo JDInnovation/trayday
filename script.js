@@ -7,13 +7,21 @@ import {
   sendPasswordResetEmail, 
   db 
 } from './firebase-config.js';
-import { collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  onSnapshot 
+} from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
 document.addEventListener("DOMContentLoaded", function() {
   // Variável para o usuário autenticado via Firebase
   let currentUser = null;
   // sessionHistory vai armazenar as sessões recuperadas do Firestore
   let sessionHistory = [];
+  // Variável para cancelar o listener em tempo real, se necessário
+  let unsubscribeSessions = null;
 
   // Dummy articles para a Home
   const dummyArticles = [
@@ -131,12 +139,17 @@ document.addEventListener("DOMContentLoaded", function() {
     currentUser = user;
     updateMenu();
     if (currentUser) {
-      // Recupera as sessões armazenadas para o utilizador atual
-      fetchUserSessions();
+      // Inicia o listener em tempo real para as sessões do usuário
+      startSessionsListener();
     } else {
       let section = window.location.hash.substring(1);
       if (["perfil", "sessao", "resultados", "calculators"].includes(section)) {
         window.location.hash = "login";
+      }
+      // Cancela o listener, se estiver ativo
+      if (typeof unsubscribeSessions === "function") {
+        unsubscribeSessions();
+        unsubscribeSessions = null;
       }
     }
   });
@@ -173,7 +186,6 @@ document.addEventListener("DOMContentLoaded", function() {
         renderSessionStart();
         break;
       case "resultados":
-        // Aguarda a recuperação dos dados antes de renderizar os resultados
         renderResultsPage();
         break;
       case "calculators":
@@ -191,8 +203,7 @@ document.addEventListener("DOMContentLoaded", function() {
   updateMenu();
   loadContent();
 
-  // --- AUTENTICAÇÃO: LOGIN, SIGNUP, RECUPERAÇÃO, LOGOUT ---
-
+  // --- FUNÇÕES DE AUTENTICAÇÃO ---
   function renderLogin() {
     const loginHTML = `
       <h2>Login</h2>
@@ -349,7 +360,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
     articlesHTML += `</div>`;
-    grid.innerHTML = articlesHTML;
+    document.getElementById("articlesGrid").innerHTML = articlesHTML;
   }
 
   // --- ARTICLE PAGE ---
@@ -373,7 +384,7 @@ document.addEventListener("DOMContentLoaded", function() {
     `;
     document.getElementById("mainContent").innerHTML = articleHTML;
   }
-  
+
   // --- PROFILE SECTION ---
   function renderProfile() {
     const profileHTML = `
@@ -689,42 +700,49 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // --- RECUPERAR SESSÕES DO FIRESTORE ---
-  async function fetchUserSessions() {
+  // --- LISTENER EM TEMPO REAL PARA AS SESSÕES ---
+  function startSessionsListener() {
     if (!currentUser) return;
-    try {
-      const sessionsRef = collection(db, "sessions");
-      const q = query(sessionsRef, where("uid", "==", currentUser.uid));
-      const querySnapshot = await getDocs(q);
+    const sessionsRef = collection(db, "sessions");
+    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+    if (typeof unsubscribeSessions === "function") {
+      unsubscribeSessions();
+    }
+    unsubscribeSessions = onSnapshot(q, (snapshot) => {
       const sessions = [];
-      querySnapshot.forEach((doc) => {
+      snapshot.forEach(doc => {
         sessions.push({ id: doc.id, ...doc.data() });
       });
-      // Atualiza o sessionHistory com as sessões recuperadas
       sessionHistory = sessions;
-      console.log("Sessões carregadas:", sessions);
-    } catch (error) {
-      console.error("Erro ao recuperar sessões: ", error);
-    }
+      console.log("Sessões em tempo real:", sessionHistory);
+      // Se a aba atual for resultados, re-renderiza para atualizar a UI
+      if (window.location.hash === "#resultados") {
+        renderResultsPage();
+      }
+    }, (error) => {
+      console.error("Erro no onSnapshot:", error);
+    });
   }
 
   // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS ---
   async function renderResultsPage() {
-    // Antes de renderizar, busca as sessões atualizadas do Firestore
-    await fetchUserSessions();
+    // Como estamos usando onSnapshot, sessionHistory já está atualizado
     // Ordena as sessões por timestamp (mais recentes primeiro)
-    const sessions = sessionHistory.sort((a, b) => b.timestamp - a.timestamp);
+    const sessions = sessionHistory.sort((a, b) => {
+      if (!a.timestamp || !b.timestamp) return 0;
+      return b.timestamp.toMillis() - a.timestamp.toMillis();
+    });
     const aggHTML = `
       <div class="aggregate-stats">
         <h3>Overall Performance</h3>
         <p><strong>Total Sessions:</strong> ${sessions.length}</p>
         <p><strong>Total Trades:</strong> ${sessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
         <p><strong>Total Gain/Loss:</strong> $${sessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
-        <p><strong>Average Profit (%):</strong> ${ (sessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / sessions.length || 0).toFixed(2) }%</p>
+        <p><strong>Average Profit (%):</strong> ${(sessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / sessions.length || 0).toFixed(2)}%</p>
         <p><strong>Average Session Duration:</strong> --</p>
-        <p><strong>Best Session:</strong> $${ Math.max(...sessions.map(s => s.totalGainLoss)).toFixed(2) }</p>
-        <p><strong>Worst Session:</strong> $${ Math.min(...sessions.map(s => s.totalGainLoss)).toFixed(2) }</p>
-        <p><strong>Average Accuracy:</strong> ${ (sessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / sessions.length || 0).toFixed(2) }%</p>
+        <p><strong>Best Session:</strong> $${Math.max(...sessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Worst Session:</strong> $${Math.min(...sessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Average Accuracy:</strong> ${(sessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / sessions.length || 0).toFixed(2)}%</p>
       </div>
     `;
     const resultsHTML = `
@@ -836,7 +854,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // --- CALCULATORS SECTION (mantido igual) ---
+  // --- CALCULATORS SECTION ---
   function renderCalculatorsPage() {
     const calculatorsHTML = `
       <h2>Calculators</h2>
@@ -920,7 +938,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
     document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
   }
-  
+
   function calcRisk() {
     const bank = parseFloat(document.getElementById("riskInitialBank").value);
     const riskPct = parseFloat(document.getElementById("riskPercentage").value);
@@ -931,7 +949,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const riskValue = (riskPct / 100) * bank;
     document.getElementById("riskResult").textContent = `Risk per trade: $${riskValue.toFixed(2)}`;
   }
-  
+
   function calcCompound() {
     const principal = parseFloat(document.getElementById("compoundPrincipal").value);
     const rate = parseFloat(document.getElementById("compoundRate").value);
@@ -951,7 +969,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     document.getElementById("compoundResult").textContent = `Future Value: $${futureValue.toFixed(2)}`;
   }
-  
+
   function calcPrediction() {
     const bank = parseFloat(document.getElementById("predInitialBank").value);
     const tradeCount = parseInt(document.getElementById("predTradeCount").value);
@@ -963,7 +981,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const finalBank = bank + (tradeCount * avgProfit);
     document.getElementById("predictionResult").textContent = `Predicted Final Bank: $${finalBank.toFixed(2)}`;
   }
-  
+
   function calcStopLoss() {
     const bank = parseFloat(document.getElementById("stopInitialBank").value);
     const riskPct = parseFloat(document.getElementById("stopRiskPercentage").value);
@@ -976,4 +994,962 @@ document.addEventListener("DOMContentLoaded", function() {
     const stopLossPrice = entryPrice - riskAmount;
     document.getElementById("stopLossResult").textContent = `Suggested Stop Loss Price: $${stopLossPrice.toFixed(2)}`;
   }
+
+  // --- LISTENER EM TEMPO REAL PARA AS SESSÕES ---
+  function startSessionsListener() {
+    if (!currentUser) return;
+    const sessionsRef = collection(db, "sessions");
+    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+    if (typeof unsubscribeSessions === "function") {
+      unsubscribeSessions();
+    }
+    unsubscribeSessions = onSnapshot(q, (snapshot) => {
+      const sessions = [];
+      snapshot.forEach(doc => {
+        sessions.push({ id: doc.id, ...doc.data() });
+      });
+      sessionHistory = sessions;
+      console.log("Sessões em tempo real:", sessionHistory);
+      if (window.location.hash === "#resultados") {
+        renderResultsPage();
+      }
+    }, (error) => {
+      console.error("Erro no onSnapshot:", error);
+    });
+  }
+
+  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS ---
+  async function renderResultsPage() {
+    // Como estamos usando onSnapshot, sessionHistory já está atualizado
+    const sessions = sessionHistory.sort((a, b) => {
+      if (!a.timestamp || !b.timestamp) return 0;
+      return b.timestamp.toMillis() - a.timestamp.toMillis();
+    });
+    const aggHTML = `
+      <div class="aggregate-stats">
+        <h3>Overall Performance</h3>
+        <p><strong>Total Sessions:</strong> ${sessions.length}</p>
+        <p><strong>Total Trades:</strong> ${sessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
+        <p><strong>Total Gain/Loss:</strong> $${sessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
+        <p><strong>Average Profit (%):</strong> ${(sessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / sessions.length || 0).toFixed(2)}%</p>
+        <p><strong>Average Session Duration:</strong> --</p>
+        <p><strong>Best Session:</strong> $${Math.max(...sessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Worst Session:</strong> $${Math.min(...sessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Average Accuracy:</strong> ${(sessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / sessions.length || 0).toFixed(2)}%</p>
+      </div>
+    `;
+    const resultsHTML = `
+      <h2>Session Results</h2>
+      ${aggHTML}
+      <div class="dashboard-row">
+        <div class="dashboard-column">
+          <h3>Profit/Loss Chart</h3>
+          <canvas id="resultsBarChart"></canvas>
+        </div>
+        <div class="dashboard-column">
+          <h3>Profit Distribution</h3>
+          <canvas id="resultsPieChart"></canvas>
+        </div>
+      </div>
+      <div class="dashboard-row">
+        <div class="dashboard-column full-width">
+          <h3>Detailed Session Table</h3>
+          <div class="table-responsive">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Duration</th>
+                  <th>Initial Bank</th>
+                  <th>Total Trades</th>
+                  <th>Total Gain/Loss</th>
+                  <th>Accuracy</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = resultsHTML;
+    renderResultsTable(sessions);
+    initResultsBarChart(sessions);
+    initResultsPieChart(sessions);
+  }
+  
+  function renderResultsTable(sessions) {
+    const tbody = document.querySelector("#resultsTable tbody");
+    tbody.innerHTML = "";
+    sessions.forEach((s, index) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${new Date(s.startTime).toLocaleString()}</td>
+        <td>${new Date(s.endTime).toLocaleString()}</td>
+        <td>${s.duration}</td>
+        <td>$${s.initialBank.toFixed(2)}</td>
+        <td>${s.totalTrades}</td>
+        <td>$${s.totalGainLoss.toFixed(2)}</td>
+        <td>${s.accuracy}%</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+  
+  function initResultsBarChart(sessions) {
+    const ctx = document.getElementById("resultsBarChart").getContext("2d");
+    resultsChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: sessions.map((s, i) => `Session ${i + 1}`),
+        datasets: [{
+          label: "Total Gain/Loss ($)",
+          data: sessions.map(s => s.totalGainLoss),
+          backgroundColor: "rgba(0, 216, 255, 0.5)",
+          borderColor: "rgba(0, 216, 255, 1)",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Sessions" } },
+          y: { title: { display: true, text: "Gain/Loss ($)" }, beginAtZero: true }
+        }
+      }
+    });
+  }
+  
+  function initResultsPieChart(sessions) {
+    const profitCount = sessions.filter(s => s.totalGainLoss > 0).length;
+    const lossCount = sessions.filter(s => s.totalGainLoss <= 0).length;
+    const ctx = document.getElementById("resultsPieChart").getContext("2d");
+    new Chart(ctx, {
+      type: "pie",
+      data: {
+        labels: ["Profitable Sessions", "Losing Sessions"],
+        datasets: [{
+          data: [profitCount, lossCount],
+          backgroundColor: [
+            "rgba(0, 216, 255, 0.7)",
+            "rgba(255, 0, 0, 0.7)"
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "bottom" }
+        }
+      }
+    });
+  }
+
+  // --- CALCULATORS SECTION ---
+  function renderCalculatorsPage() {
+    const calculatorsHTML = `
+      <h2>Calculators</h2>
+      <div class="calc-tabs">
+        <span class="calc-tab active" data-target="riskCalc">Risk</span>
+        <span class="calc-tab" data-target="compoundCalc">Compound</span>
+        <span class="calc-tab" data-target="predictionCalc">Prediction</span>
+        <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
+      </div>
+      <div class="calc-content">
+        <div id="riskCalc" class="calc-item active">
+          <div class="calculators-section">
+            <h3>Risk Calculator</h3>
+            <label for="riskInitialBank">Initial Bank ($):</label>
+            <input type="number" id="riskInitialBank" placeholder="Enter your bank" />
+            <label for="riskPercentage">Risk Percentage (%):</label>
+            <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
+            <button id="calcRiskBtn">Calculate Risk</button>
+            <p id="riskResult"></p>
+          </div>
+        </div>
+        <div id="compoundCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Compound Interest Calculator</h3>
+            <label for="compoundPrincipal">Principal ($):</label>
+            <input type="number" id="compoundPrincipal" placeholder="Enter principal" />
+            <label for="compoundRate">Interest Rate (%):</label>
+            <input type="number" id="compoundRate" placeholder="Enter rate" />
+            <label for="compoundBasis">Calculation Basis:</label>
+            <select id="compoundBasis">
+              <option value="sessions">Sessions</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <label for="compoundPeriods">Number of Periods:</label>
+            <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
+            <button id="calcCompoundBtn">Calculate</button>
+            <p id="compoundResult"></p>
+          </div>
+        </div>
+        <div id="predictionCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Session Prediction Calculator</h3>
+            <label for="predInitialBank">Initial Bank ($):</label>
+            <input type="number" id="predInitialBank" placeholder="Enter your bank" />
+            <label for="predTradeCount">Number of Trades:</label>
+            <input type="number" id="predTradeCount" placeholder="Enter number of trades" />
+            <label for="predAvgProfit">Average Profit/Loss per Trade ($):</label>
+            <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
+            <button id="calcPredictionBtn">Predict Final Bank</button>
+            <p id="predictionResult"></p>
+          </div>
+        </div>
+        <div id="stopLossCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Stop Loss Calculator</h3>
+            <label for="stopInitialBank">Initial Bank ($):</label>
+            <input type="number" id="stopInitialBank" placeholder="Enter your bank" />
+            <label for="stopRiskPercentage">Risk Percentage per Trade (%):</label>
+            <input type="number" id="stopRiskPercentage" placeholder="Enter risk percentage" />
+            <label for="entryPrice">Entry Price ($):</label>
+            <input type="number" id="entryPrice" placeholder="Enter entry price" />
+            <button id="calcStopLossBtn">Calculate Stop Loss</button>
+            <p id="stopLossResult"></p>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = calculatorsHTML;
+    document.querySelectorAll(".calc-tab").forEach(tab => {
+      tab.addEventListener("click", function() {
+        document.querySelectorAll(".calc-tab").forEach(t => t.classList.remove("active"));
+        this.classList.add("active");
+        const target = this.getAttribute("data-target");
+        document.querySelectorAll(".calc-item").forEach(item => item.classList.remove("active"));
+        document.getElementById(target).classList.add("active");
+      });
+    });
+    document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
+    document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
+    document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
+    document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
+  }
+
+  function calcRisk() {
+    const bank = parseFloat(document.getElementById("riskInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("riskPercentage").value);
+    if (isNaN(bank) || isNaN(riskPct)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskValue = (riskPct / 100) * bank;
+    document.getElementById("riskResult").textContent = `Risk per trade: $${riskValue.toFixed(2)}`;
+  }
+
+  function calcCompound() {
+    const principal = parseFloat(document.getElementById("compoundPrincipal").value);
+    const rate = parseFloat(document.getElementById("compoundRate").value);
+    const basis = document.getElementById("compoundBasis").value;
+    const periods = parseInt(document.getElementById("compoundPeriods").value);
+    if (isNaN(principal) || isNaN(rate) || isNaN(periods)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    let futureValue;
+    if (basis === "sessions") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    } else if (basis === "monthly") {
+      futureValue = principal * Math.pow(1 + (rate / 100) / 12, periods);
+    } else if (basis === "yearly") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    }
+    document.getElementById("compoundResult").textContent = `Future Value: $${futureValue.toFixed(2)}`;
+  }
+
+  function calcPrediction() {
+    const bank = parseFloat(document.getElementById("predInitialBank").value);
+    const tradeCount = parseInt(document.getElementById("predTradeCount").value);
+    const avgProfit = parseFloat(document.getElementById("predAvgProfit").value);
+    if (isNaN(bank) || isNaN(tradeCount) || isNaN(avgProfit)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const finalBank = bank + (tradeCount * avgProfit);
+    document.getElementById("predictionResult").textContent = `Predicted Final Bank: $${finalBank.toFixed(2)}`;
+  }
+
+  function calcStopLoss() {
+    const bank = parseFloat(document.getElementById("stopInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("stopRiskPercentage").value);
+    const entryPrice = parseFloat(document.getElementById("entryPrice").value);
+    if (isNaN(bank) || isNaN(riskPct) || isNaN(entryPrice)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskAmount = (riskPct / 100) * bank;
+    const stopLossPrice = entryPrice - riskAmount;
+    document.getElementById("stopLossResult").textContent = `Suggested Stop Loss Price: $${stopLossPrice.toFixed(2)}`;
+  }
+
+  // --- LISTENER EM TEMPO REAL PARA AS SESSÕES ---
+  function startSessionsListener() {
+    if (!currentUser) return;
+    const sessionsRef = collection(db, "sessions");
+    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+    if (typeof unsubscribeSessions === "function") {
+      unsubscribeSessions();
+    }
+    unsubscribeSessions = onSnapshot(q, (snapshot) => {
+      const sessions = [];
+      snapshot.forEach(doc => {
+        sessions.push({ id: doc.id, ...doc.data() });
+      });
+      sessionHistory = sessions;
+      console.log("Sessões em tempo real:", sessionHistory);
+      if (window.location.hash === "#resultados") {
+        renderResultsPage();
+      }
+    }, (error) => {
+      console.error("Erro no onSnapshot:", error);
+    });
+  }
+
+  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS ---
+  async function renderResultsPage() {
+    // Como sessionHistory está atualizado em tempo real, usamos ele diretamente
+    const sessions = sessionHistory.sort((a, b) => {
+      if (!a.timestamp || !b.timestamp) return 0;
+      return b.timestamp.toMillis() - a.timestamp.toMillis();
+    });
+    const aggHTML = `
+      <div class="aggregate-stats">
+        <h3>Overall Performance</h3>
+        <p><strong>Total Sessions:</strong> ${sessions.length}</p>
+        <p><strong>Total Trades:</strong> ${sessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
+        <p><strong>Total Gain/Loss:</strong> $${sessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
+        <p><strong>Average Profit (%):</strong> ${(sessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / sessions.length || 0).toFixed(2)}%</p>
+        <p><strong>Average Session Duration:</strong> --</p>
+        <p><strong>Best Session:</strong> $${Math.max(...sessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Worst Session:</strong> $${Math.min(...sessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Average Accuracy:</strong> ${(sessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / sessions.length || 0).toFixed(2)}%</p>
+      </div>
+    `;
+    const resultsHTML = `
+      <h2>Session Results</h2>
+      ${aggHTML}
+      <div class="dashboard-row">
+        <div class="dashboard-column">
+          <h3>Profit/Loss Chart</h3>
+          <canvas id="resultsBarChart"></canvas>
+        </div>
+        <div class="dashboard-column">
+          <h3>Profit Distribution</h3>
+          <canvas id="resultsPieChart"></canvas>
+        </div>
+      </div>
+      <div class="dashboard-row">
+        <div class="dashboard-column full-width">
+          <h3>Detailed Session Table</h3>
+          <div class="table-responsive">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Duration</th>
+                  <th>Initial Bank</th>
+                  <th>Total Trades</th>
+                  <th>Total Gain/Loss</th>
+                  <th>Accuracy</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = resultsHTML;
+    renderResultsTable(sessions);
+    initResultsBarChart(sessions);
+    initResultsPieChart(sessions);
+  }
+  
+  function renderResultsTable(sessions) {
+    const tbody = document.querySelector("#resultsTable tbody");
+    tbody.innerHTML = "";
+    sessions.forEach((s, index) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${new Date(s.startTime).toLocaleString()}</td>
+        <td>${new Date(s.endTime).toLocaleString()}</td>
+        <td>${s.duration}</td>
+        <td>$${s.initialBank.toFixed(2)}</td>
+        <td>${s.totalTrades}</td>
+        <td>$${s.totalGainLoss.toFixed(2)}</td>
+        <td>${s.accuracy}%</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+  
+  function initResultsBarChart(sessions) {
+    const ctx = document.getElementById("resultsBarChart").getContext("2d");
+    resultsChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: sessions.map((s, i) => `Session ${i + 1}`),
+        datasets: [{
+          label: "Total Gain/Loss ($)",
+          data: sessions.map(s => s.totalGainLoss),
+          backgroundColor: "rgba(0, 216, 255, 0.5)",
+          borderColor: "rgba(0, 216, 255, 1)",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Sessions" } },
+          y: { title: { display: true, text: "Gain/Loss ($)" }, beginAtZero: true }
+        }
+      }
+    });
+  }
+  
+  function initResultsPieChart(sessions) {
+    const profitCount = sessions.filter(s => s.totalGainLoss > 0).length;
+    const lossCount = sessions.filter(s => s.totalGainLoss <= 0).length;
+    const ctx = document.getElementById("resultsPieChart").getContext("2d");
+    new Chart(ctx, {
+      type: "pie",
+      data: {
+        labels: ["Profitable Sessions", "Losing Sessions"],
+        datasets: [{
+          data: [profitCount, lossCount],
+          backgroundColor: [
+            "rgba(0, 216, 255, 0.7)",
+            "rgba(255, 0, 0, 0.7)"
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "bottom" }
+        }
+      }
+    });
+  }
+
+  // --- TERMINAR SESSÃO E ARMAZENAR NO FIRESTORE ---
+  async function terminateSession() {
+    if (!confirm("Are you sure you want to end the session?")) return;
+    clearInterval(sessionTimerInterval);
+    const endTime = new Date();
+    const durationMs = endTime - sessionStartTime;
+    const d = new Date(durationMs);
+    const totalDuration = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")}`;
+    const totalTrades = sessionData.trades.length;
+    const totalGainLoss = sessionData.trades.reduce((sum, trade) => sum + trade.value, 0);
+    const wins = sessionData.trades.filter(trade => trade.value > 0).length;
+    const accuracy = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(2) : 0;
+    const sessionSummary = {
+      startTime: sessionStartTime,
+      endTime: endTime,
+      duration: totalDuration,
+      initialBank: sessionData.initialBank,
+      totalTrades: totalTrades,
+      totalGainLoss: totalGainLoss,
+      accuracy: accuracy,
+      type: sessionData.type
+    };
+    // Adiciona a sessão atual ao histórico em memória
+    sessionHistory.push(sessionSummary);
+    // Armazena no Firestore
+    await storeSessionData(sessionSummary);
+    const summaryHTML = `
+      <h2>Session Summary</h2>
+      <div class="session-summary">
+        <p><strong>Start:</strong> ${sessionSummary.startTime.toLocaleString()}</p>
+        <p><strong>End:</strong> ${sessionSummary.endTime.toLocaleString()}</p>
+        <p><strong>Duration:</strong> ${sessionSummary.duration}</p>
+        <p><strong>Initial Bank:</strong> $${sessionSummary.initialBank.toFixed(2)}</p>
+        <p><strong>Total Trades:</strong> ${sessionSummary.totalTrades}</p>
+        <p><strong>Total Gain/Loss:</strong> $${sessionSummary.totalGainLoss.toFixed(2)}</p>
+        <p><strong>Accuracy:</strong> ${sessionSummary.accuracy}%</p>
+      </div>
+      <button id="backSessionBtn">Back</button>
+      <button id="exportSessionBtn">Export Results</button>
+    `;
+    document.getElementById("mainContent").innerHTML = summaryHTML;
+    document.getElementById("backSessionBtn").addEventListener("click", () => {
+      window.location.hash = "home";
+    });
+    document.getElementById("exportSessionBtn").addEventListener("click", exportSessionResults);
+  }
+
+  async function storeSessionData(sessionSummary) {
+    try {
+      await addDoc(collection(db, "sessions"), {
+        uid: currentUser.uid,
+        startTime: sessionSummary.startTime,
+        endTime: sessionSummary.endTime,
+        duration: sessionSummary.duration,
+        initialBank: sessionSummary.initialBank,
+        totalTrades: sessionSummary.totalTrades,
+        totalGainLoss: sessionSummary.totalGainLoss,
+        accuracy: sessionSummary.accuracy,
+        type: sessionSummary.type,
+        timestamp: new Date()
+      });
+      console.log("Dados da sessão armazenados com sucesso.");
+    } catch (error) {
+      console.error("Erro ao armazenar sessão: ", error);
+    }
+  }
+
+  // --- CALCULATORS SECTION ---
+  function renderCalculatorsPage() {
+    const calculatorsHTML = `
+      <h2>Calculators</h2>
+      <div class="calc-tabs">
+        <span class="calc-tab active" data-target="riskCalc">Risk</span>
+        <span class="calc-tab" data-target="compoundCalc">Compound</span>
+        <span class="calc-tab" data-target="predictionCalc">Prediction</span>
+        <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
+      </div>
+      <div class="calc-content">
+        <div id="riskCalc" class="calc-item active">
+          <div class="calculators-section">
+            <h3>Risk Calculator</h3>
+            <label for="riskInitialBank">Initial Bank ($):</label>
+            <input type="number" id="riskInitialBank" placeholder="Enter your bank" />
+            <label for="riskPercentage">Risk Percentage (%):</label>
+            <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
+            <button id="calcRiskBtn">Calculate Risk</button>
+            <p id="riskResult"></p>
+          </div>
+        </div>
+        <div id="compoundCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Compound Interest Calculator</h3>
+            <label for="compoundPrincipal">Principal ($):</label>
+            <input type="number" id="compoundPrincipal" placeholder="Enter principal" />
+            <label for="compoundRate">Interest Rate (%):</label>
+            <input type="number" id="compoundRate" placeholder="Enter rate" />
+            <label for="compoundBasis">Calculation Basis:</label>
+            <select id="compoundBasis">
+              <option value="sessions">Sessions</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <label for="compoundPeriods">Number of Periods:</label>
+            <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
+            <button id="calcCompoundBtn">Calculate</button>
+            <p id="compoundResult"></p>
+          </div>
+        </div>
+        <div id="predictionCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Session Prediction Calculator</h3>
+            <label for="predInitialBank">Initial Bank ($):</label>
+            <input type="number" id="predInitialBank" placeholder="Enter your bank" />
+            <label for="predTradeCount">Number of Trades:</label>
+            <input type="number" id="predTradeCount" placeholder="Enter number of trades" />
+            <label for="predAvgProfit">Average Profit/Loss per Trade ($):</label>
+            <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
+            <button id="calcPredictionBtn">Predict Final Bank</button>
+            <p id="predictionResult"></p>
+          </div>
+        </div>
+        <div id="stopLossCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Stop Loss Calculator</h3>
+            <label for="stopInitialBank">Initial Bank ($):</label>
+            <input type="number" id="stopInitialBank" placeholder="Enter your bank" />
+            <label for="stopRiskPercentage">Risk Percentage per Trade (%):</label>
+            <input type="number" id="stopRiskPercentage" placeholder="Enter risk percentage" />
+            <label for="entryPrice">Entry Price ($):</label>
+            <input type="number" id="entryPrice" placeholder="Enter entry price" />
+            <button id="calcStopLossBtn">Calculate Stop Loss</button>
+            <p id="stopLossResult"></p>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = calculatorsHTML;
+    document.querySelectorAll(".calc-tab").forEach(tab => {
+      tab.addEventListener("click", function() {
+        document.querySelectorAll(".calc-tab").forEach(t => t.classList.remove("active"));
+        this.classList.add("active");
+        const target = this.getAttribute("data-target");
+        document.querySelectorAll(".calc-item").forEach(item => item.classList.remove("active"));
+        document.getElementById(target).classList.add("active");
+      });
+    });
+    document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
+    document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
+    document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
+    document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
+  }
+
+  function calcRisk() {
+    const bank = parseFloat(document.getElementById("riskInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("riskPercentage").value);
+    if (isNaN(bank) || isNaN(riskPct)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskValue = (riskPct / 100) * bank;
+    document.getElementById("riskResult").textContent = `Risk per trade: $${riskValue.toFixed(2)}`;
+  }
+
+  function calcCompound() {
+    const principal = parseFloat(document.getElementById("compoundPrincipal").value);
+    const rate = parseFloat(document.getElementById("compoundRate").value);
+    const basis = document.getElementById("compoundBasis").value;
+    const periods = parseInt(document.getElementById("compoundPeriods").value);
+    if (isNaN(principal) || isNaN(rate) || isNaN(periods)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    let futureValue;
+    if (basis === "sessions") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    } else if (basis === "monthly") {
+      futureValue = principal * Math.pow(1 + (rate / 100) / 12, periods);
+    } else if (basis === "yearly") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    }
+    document.getElementById("compoundResult").textContent = `Future Value: $${futureValue.toFixed(2)}`;
+  }
+
+  function calcPrediction() {
+    const bank = parseFloat(document.getElementById("predInitialBank").value);
+    const tradeCount = parseInt(document.getElementById("predTradeCount").value);
+    const avgProfit = parseFloat(document.getElementById("predAvgProfit").value);
+    if (isNaN(bank) || isNaN(tradeCount) || isNaN(avgProfit)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const finalBank = bank + (tradeCount * avgProfit);
+    document.getElementById("predictionResult").textContent = `Predicted Final Bank: $${finalBank.toFixed(2)}`;
+  }
+
+  function calcStopLoss() {
+    const bank = parseFloat(document.getElementById("stopInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("stopRiskPercentage").value);
+    const entryPrice = parseFloat(document.getElementById("entryPrice").value);
+    if (isNaN(bank) || isNaN(riskPct) || isNaN(entryPrice)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskAmount = (riskPct / 100) * bank;
+    const stopLossPrice = entryPrice - riskAmount;
+    document.getElementById("stopLossResult").textContent = `Suggested Stop Loss Price: $${stopLossPrice.toFixed(2)}`;
+  }
+
+  // --- LISTENER EM TEMPO REAL PARA AS SESSÕES ---
+  function startSessionsListener() {
+    if (!currentUser) return;
+    const sessionsRef = collection(db, "sessions");
+    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+    if (typeof unsubscribeSessions === "function") {
+      unsubscribeSessions();
+    }
+    unsubscribeSessions = onSnapshot(q, (snapshot) => {
+      const sessions = [];
+      snapshot.forEach(doc => {
+        sessions.push({ id: doc.id, ...doc.data() });
+      });
+      sessionHistory = sessions;
+      console.log("Sessões em tempo real:", sessionHistory);
+      if (window.location.hash === "#resultados") {
+        renderResultsPage();
+      }
+    }, (error) => {
+      console.error("Erro no onSnapshot:", error);
+    });
+  }
+
+  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS ---
+  async function renderResultsPage() {
+    // Como sessionHistory já é atualizado em tempo real, usamos ele diretamente
+    const sessions = sessionHistory.sort((a, b) => {
+      if (!a.timestamp || !b.timestamp) return 0;
+      return b.timestamp.toMillis() - a.timestamp.toMillis();
+    });
+    const aggHTML = `
+      <div class="aggregate-stats">
+        <h3>Overall Performance</h3>
+        <p><strong>Total Sessions:</strong> ${sessions.length}</p>
+        <p><strong>Total Trades:</strong> ${sessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
+        <p><strong>Total Gain/Loss:</strong> $${sessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
+        <p><strong>Average Profit (%):</strong> ${(sessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / sessions.length || 0).toFixed(2)}%</p>
+        <p><strong>Average Session Duration:</strong> --</p>
+        <p><strong>Best Session:</strong> $${Math.max(...sessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Worst Session:</strong> $${Math.min(...sessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Average Accuracy:</strong> ${(sessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / sessions.length || 0).toFixed(2)}%</p>
+      </div>
+    `;
+    const resultsHTML = `
+      <h2>Session Results</h2>
+      ${aggHTML}
+      <div class="dashboard-row">
+        <div class="dashboard-column">
+          <h3>Profit/Loss Chart</h3>
+          <canvas id="resultsBarChart"></canvas>
+        </div>
+        <div class="dashboard-column">
+          <h3>Profit Distribution</h3>
+          <canvas id="resultsPieChart"></canvas>
+        </div>
+      </div>
+      <div class="dashboard-row">
+        <div class="dashboard-column full-width">
+          <h3>Detailed Session Table</h3>
+          <div class="table-responsive">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Duration</th>
+                  <th>Initial Bank</th>
+                  <th>Total Trades</th>
+                  <th>Total Gain/Loss</th>
+                  <th>Accuracy</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = resultsHTML;
+    renderResultsTable(sessions);
+    initResultsBarChart(sessions);
+    initResultsPieChart(sessions);
+  }
+  
+  function renderResultsTable(sessions) {
+    const tbody = document.querySelector("#resultsTable tbody");
+    tbody.innerHTML = "";
+    sessions.forEach((s, index) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${new Date(s.startTime).toLocaleString()}</td>
+        <td>${new Date(s.endTime).toLocaleString()}</td>
+        <td>${s.duration}</td>
+        <td>$${s.initialBank.toFixed(2)}</td>
+        <td>${s.totalTrades}</td>
+        <td>$${s.totalGainLoss.toFixed(2)}</td>
+        <td>${s.accuracy}%</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+  
+  function initResultsBarChart(sessions) {
+    const ctx = document.getElementById("resultsBarChart").getContext("2d");
+    resultsChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: sessions.map((s, i) => `Session ${i + 1}`),
+        datasets: [{
+          label: "Total Gain/Loss ($)",
+          data: sessions.map(s => s.totalGainLoss),
+          backgroundColor: "rgba(0, 216, 255, 0.5)",
+          borderColor: "rgba(0, 216, 255, 1)",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Sessions" } },
+          y: { title: { display: true, text: "Gain/Loss ($)" }, beginAtZero: true }
+        }
+      }
+    });
+  }
+  
+  function initResultsPieChart(sessions) {
+    const profitCount = sessions.filter(s => s.totalGainLoss > 0).length;
+    const lossCount = sessions.filter(s => s.totalGainLoss <= 0).length;
+    const ctx = document.getElementById("resultsPieChart").getContext("2d");
+    new Chart(ctx, {
+      type: "pie",
+      data: {
+        labels: ["Profitable Sessions", "Losing Sessions"],
+        datasets: [{
+          data: [profitCount, lossCount],
+          backgroundColor: [
+            "rgba(0, 216, 255, 0.7)",
+            "rgba(255, 0, 0, 0.7)"
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "bottom" }
+        }
+      }
+    });
+  }
+
+  // --- TERMINAR SESSÃO E ARMAZENAR NO FIRESTORE ---
+  async function terminateSession() {
+    if (!confirm("Are you sure you want to end the session?")) return;
+    clearInterval(sessionTimerInterval);
+    const endTime = new Date();
+    const durationMs = endTime - sessionStartTime;
+    const d = new Date(durationMs);
+    const totalDuration = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")}`;
+    const totalTrades = sessionData.trades.length;
+    const totalGainLoss = sessionData.trades.reduce((sum, trade) => sum + trade.value, 0);
+    const wins = sessionData.trades.filter(trade => trade.value > 0).length;
+    const accuracy = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(2) : 0;
+    const sessionSummary = {
+      startTime: sessionStartTime,
+      endTime: endTime,
+      duration: totalDuration,
+      initialBank: sessionData.initialBank,
+      totalTrades: totalTrades,
+      totalGainLoss: totalGainLoss,
+      accuracy: accuracy,
+      type: sessionData.type
+    };
+    // Adiciona a sessão atual ao histórico em memória
+    sessionHistory.push(sessionSummary);
+    // Armazena no Firestore
+    await storeSessionData(sessionSummary);
+    const summaryHTML = `
+      <h2>Session Summary</h2>
+      <div class="session-summary">
+        <p><strong>Start:</strong> ${sessionSummary.startTime.toLocaleString()}</p>
+        <p><strong>End:</strong> ${sessionSummary.endTime.toLocaleString()}</p>
+        <p><strong>Duration:</strong> ${sessionSummary.duration}</p>
+        <p><strong>Initial Bank:</strong> $${sessionSummary.initialBank.toFixed(2)}</p>
+        <p><strong>Total Trades:</strong> ${sessionSummary.totalTrades}</p>
+        <p><strong>Total Gain/Loss:</strong> $${sessionSummary.totalGainLoss.toFixed(2)}</p>
+        <p><strong>Accuracy:</strong> ${sessionSummary.accuracy}%</p>
+      </div>
+      <button id="backSessionBtn">Back</button>
+      <button id="exportSessionBtn">Export Results</button>
+    `;
+    document.getElementById("mainContent").innerHTML = summaryHTML;
+    document.getElementById("backSessionBtn").addEventListener("click", () => {
+      window.location.hash = "home";
+    });
+    document.getElementById("exportSessionBtn").addEventListener("click", exportSessionResults);
+  }
+
+  async function storeSessionData(sessionSummary) {
+    try {
+      await addDoc(collection(db, "sessions"), {
+        uid: currentUser.uid,
+        startTime: sessionSummary.startTime,
+        endTime: sessionSummary.endTime,
+        duration: sessionSummary.duration,
+        initialBank: sessionSummary.initialBank,
+        totalTrades: sessionSummary.totalTrades,
+        totalGainLoss: sessionSummary.totalGainLoss,
+        accuracy: sessionSummary.accuracy,
+        type: sessionSummary.type,
+        timestamp: new Date()
+      });
+      console.log("Dados da sessão armazenados com sucesso.");
+    } catch (error) {
+      console.error("Erro ao armazenar sessão: ", error);
+    }
+  }
+
+  // --- CALCULATORS SECTION ---
+  function renderCalculatorsPage() {
+    const calculatorsHTML = `
+      <h2>Calculators</h2>
+      <div class="calc-tabs">
+        <span class="calc-tab active" data-target="riskCalc">Risk</span>
+        <span class="calc-tab" data-target="compoundCalc">Compound</span>
+        <span class="calc-tab" data-target="predictionCalc">Prediction</span>
+        <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
+      </div>
+      <div class="calc-content">
+        <div id="riskCalc" class="calc-item active">
+          <div class="calculators-section">
+            <h3>Risk Calculator</h3>
+            <label for="riskInitialBank">Initial Bank ($):</label>
+            <input type="number" id="riskInitialBank" placeholder="Enter your bank" />
+            <label for="riskPercentage">Risk Percentage (%):</label>
+            <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
+            <button id="calcRiskBtn">Calculate Risk</button>
+            <p id="riskResult"></p>
+          </div>
+        </div>
+        <div id="compoundCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Compound Interest Calculator</h3>
+            <label for="compoundPrincipal">Principal ($):</label>
+            <input type="number" id="compoundPrincipal" placeholder="Enter principal" />
+            <label for="compoundRate">Interest Rate (%):</label>
+            <input type="number" id="compoundRate" placeholder="Enter rate" />
+            <label for="compoundBasis">Calculation Basis:</label>
+            <select id="compoundBasis">
+              <option value="sessions">Sessions</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <label for="compoundPeriods">Number of Periods:</label>
+            <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
+            <button id="calcCompoundBtn">Calculate</button>
+            <p id="compoundResult"></p>
+          </div>
+        </div>
+        <div id="predictionCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Session Prediction Calculator</h3>
+            <label for="predInitialBank">Initial Bank ($):</label>
+            <input type="number" id="predInitialBank" placeholder="Enter your bank" />
+            <label for="predTradeCount">Number of Trades:</label>
+            <input type="number" id="predTradeCount" placeholder="Enter number of trades" />
+            <label for="predAvgProfit">Average Profit/Loss per Trade ($):</label>
+            <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
+            <button id="calcPredictionBtn">Predict Final Bank</button>
+            <p id="predictionResult"></p>
+          </div>
+        </div>
+        <div id="stopLossCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Stop Loss Calculator</h3>
+            <label for="stopInitialBank">Initial Bank ($):</label>
+            <input type="number" id="stopInitialBank" placeholder="Enter your bank" />
+            <label for="stopRiskPercentage">Risk Percentage per Trade (%):</label>
+            <input type="number" id="stopRiskPercentage" placeholder="Enter risk percentage" />
+            <label for="entryPrice">Entry Price ($):</label>
+            <input type="number" id="entryPrice" placeholder="Enter entry price" />
+            <button id="calcStopLossBtn">Calculate Stop Loss</button>
+            <p id="stopLossResult"></p>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = calculatorsHTML;
+    document.querySelectorAll(".calc-tab").forEach(tab => {
+      tab.addEventListener("click", function() {
+        document.querySelectorAll(".calc-tab").forEach(t => t.classList.remove("active"));
+        this.classList.add("active");
+        const target = this.getAttribute("data-target");
+        document.querySelectorAll(".calc-item").forEach(item => item.classList.remove("active"));
+        document.getElementById(target).classList.add("active");
+      });
+    });
+    document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
+    document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
+    document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
+    document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
+  }
+
 });
