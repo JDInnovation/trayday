@@ -229,7 +229,23 @@ document.addEventListener("DOMContentLoaded", function() {
       });
   }
 
-  // Página de Criação de Conta (Signup)
+  // cenas de guardar os dados 
+
+async function storeSessionData(sessionSummary) {
+  try {
+    // Cria um documento na coleção "sessions"
+    await addDoc(collection(db, "sessions"), {
+      uid: currentUser.uid,
+      sessionSummary, // podes enviar o objeto completo
+      timestamp: new Date() // opcional, para saber quando foi guardada a sessão
+    });
+    console.log("Dados da sessão armazenados com sucesso.");
+  } catch (error) {
+    console.error("Erro ao armazenar sessão: ", error);
+  }
+}
+
+ // Página de Criação de Conta (Signup)
   function renderSignUp() {
     const signUpHTML = `
       <h2>Criar Conta</h2>
@@ -651,6 +667,8 @@ document.addEventListener("DOMContentLoaded", function() {
       type: sessionData.type
     };
     sessionHistory.push(sessionSummary);
+    storeSessionData(sessionSummary);
+
     const summaryHTML = `
       <h2>Session Summary</h2>
       <div class="session-summary">
