@@ -1,6 +1,8 @@
+import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from './firebase-config.js';
+
 document.addEventListener("DOMContentLoaded", function() {
-  // Variáveis globais para autenticação e dados
-  let currentUser = JSON.parse(localStorage.getItem("currentUser")) || null;
+  // Variável para o usuário autenticado via Firebase
+  let currentUser = null;
   let sessionHistory = [];
 
   // Dummy articles para a Home com categorias e thumbnails
@@ -13,7 +15,7 @@ document.addEventListener("DOMContentLoaded", function() {
       category: "noticia",
       excerpt: "Bitcoin reaches an unprecedented all-time high as global interest surges.",
       thumbnail: "thumb1.jpg",
-      content: "In a remarkable turn of events, Bitcoin has reached a new all-time high, attracting investors worldwide. Experts say that the surge is due to increased institutional interest and macroeconomic factors. This milestone could signal a new era for cryptocurrencies."
+      content: "In a remarkable turn of events, Bitcoin has reached a new all-time high, attracting investors worldwide. Experts say that the surge is due to increased institutional interest and macroeconomic factors."
     },
     {
       id: 2,
@@ -23,7 +25,7 @@ document.addEventListener("DOMContentLoaded", function() {
       category: "análises",
       excerpt: "Ethereum continues to lead the way in smart contract innovation.",
       thumbnail: "thumb2.jpg",
-      content: "Ethereum, the pioneer of smart contracts, remains at the forefront of blockchain technology. With a series of upgrades and an expanding ecosystem, ETH is positioning itself as the backbone for decentralized applications. This article explores the future potential of Ethereum and its role in the evolving digital economy."
+      content: "Ethereum, the pioneer of smart contracts, remains at the forefront of blockchain technology. With a series of upgrades and an expanding ecosystem, ETH is positioning itself as the backbone for decentralized applications."
     },
     {
       id: 3,
@@ -33,16 +35,16 @@ document.addEventListener("DOMContentLoaded", function() {
       category: "informação",
       excerpt: "Scalping can be highly profitable if executed with precision and discipline.",
       thumbnail: "thumb3.jpg",
-      content: "Scalping, a trading strategy focused on small but frequent profits, is gaining traction in volatile markets. In this comprehensive guide, we explore various scalping techniques, risk management strategies, and real-world examples to help traders capitalize on rapid market movements."
+      content: "Scalping, a trading strategy focused on small but frequent profits, is gaining traction in volatile markets. In this comprehensive guide, we explore various scalping techniques, risk management strategies, and real-world examples."
     }
   ];
 
-  // Variáveis para a sessão de trading (Scalping)
+  // Variáveis para a sessão de scalping
   let sessionStartTime;
   let sessionTimerInterval;
   let sessionData = {
     initialBank: 0,
-    type: "normal", // Valores: soft, normal, aggressive
+    type: "normal",
     trades: [],
     riskPerTrade: 0,
     maxTrades: 0,
@@ -63,7 +65,7 @@ document.addEventListener("DOMContentLoaded", function() {
     login: '<i class="fas fa-sign-in-alt menu-icon"></i>'
   };
 
-  // Atualiza o menu com ícones e textos
+  // Atualiza o menu
   function updateMenu() {
     const menuLinks = document.getElementById("menuLinks");
     menuLinks.innerHTML = "";
@@ -97,7 +99,7 @@ document.addEventListener("DOMContentLoaded", function() {
   function updateUserStatus() {
     const userStatus = document.getElementById("userStatus");
     if (currentUser) {
-      userStatus.innerHTML = `Hello, <strong>${currentUser.username}</strong> | <a href="#" id="logoutLink">Logout</a>`;
+      userStatus.innerHTML = `Hello, <strong>${currentUser.email}</strong> | <a href="#" id="logoutLink">Logout</a>`;
       document.getElementById("logoutLink").addEventListener("click", logout);
     } else {
       userStatus.innerHTML = `<a href="#login">Login</a>`;
@@ -118,6 +120,19 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
+  // Monitorar o estado de autenticação do Firebase
+  auth.onAuthStateChanged((user) => {
+    currentUser = user;
+    updateMenu();
+    // Se o utilizador não estiver autenticado e a página exigir login, redireciona para login.
+    if (!currentUser) {
+      let section = window.location.hash.substring(1);
+      if (["perfil", "sessao", "resultados", "calculators"].includes(section)) {
+        window.location.hash = "login";
+      }
+    }
+  });
+
   // Carrega conteúdo com base no hash da URL
   function loadContent() {
     let section = window.location.hash.substring(1);
@@ -126,7 +141,7 @@ document.addEventListener("DOMContentLoaded", function() {
       renderArticlePage(section.substring(8));
       return;
     }
-    if ((section === "perfil" || section === "calculators" || section === "sessao" || section === "resultados") && !currentUser) {
+    if ((["perfil", "calculators", "sessao", "resultados"].includes(section)) && !currentUser) {
       window.location.hash = "login";
       return;
     }
@@ -136,6 +151,12 @@ document.addEventListener("DOMContentLoaded", function() {
         break;
       case "login":
         renderLogin();
+        break;
+      case "signup":
+        renderSignUp();
+        break;
+      case "recover":
+        renderRecover();
         break;
       case "perfil":
         renderProfile();
@@ -165,41 +186,127 @@ document.addEventListener("DOMContentLoaded", function() {
   updateMenu();
   loadContent();
 
-  // --- LOGIN SECTION ---
+  // --- FUNÇÕES DE AUTENTICAÇÃO ---
+
+  // Página de Login
   function renderLogin() {
     const loginHTML = `
       <h2>Login</h2>
       <div class="login-form">
-        <label for="username">Username:</label>
-        <input type="text" id="username" placeholder="Enter your username" />
+        <label for="email">Email:</label>
+        <input type="email" id="email" placeholder="Enter your email" />
         <label for="password">Password:</label>
         <input type="password" id="password" placeholder="Enter your password" />
         <button id="loginBtn">Login</button>
       </div>
+      <p>
+        <a href="#signup">Criar Conta</a> | 
+        <a href="#recover">Recuperar Senha</a>
+      </p>
     `;
     document.getElementById("mainContent").innerHTML = loginHTML;
     document.getElementById("loginBtn").addEventListener("click", doLogin);
   }
 
   function doLogin() {
-    const username = document.getElementById("username").value.trim();
+    const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
-    if (username === "" || password === "") {
-      alert("Please fill in all fields.");
+    if (email === "" || password === "") {
+      alert("Por favor, preencha todos os campos.");
       return;
     }
-    currentUser = { username };
-    localStorage.setItem("currentUser", JSON.stringify(currentUser));
-    updateMenu();
-    window.location.hash = "home";
+    signInWithEmailAndPassword(auth, email, password)
+      .then((userCredential) => {
+        currentUser = userCredential.user;
+        updateMenu();
+        window.location.hash = "home";
+      })
+      .catch((error) => {
+        alert("Erro ao fazer login: " + error.message);
+      });
   }
 
+  // Página de Criação de Conta (Signup)
+  function renderSignUp() {
+    const signUpHTML = `
+      <h2>Criar Conta</h2>
+      <div class="session-form">
+        <label for="email">Email:</label>
+        <input type="email" id="email" placeholder="Enter your email" />
+        <label for="password">Password:</label>
+        <input type="password" id="password" placeholder="Enter your password" />
+        <button id="signupBtn">Criar Conta</button>
+      </div>
+      <p>
+        <a href="#login">Já tem conta? Login</a>
+      </p>
+    `;
+    document.getElementById("mainContent").innerHTML = signUpHTML;
+    document.getElementById("signupBtn").addEventListener("click", doSignUp);
+  }
+
+  function doSignUp() {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    if (email === "" || password === "") {
+      alert("Por favor, preencha todos os campos.");
+      return;
+    }
+    createUserWithEmailAndPassword(auth, email, password)
+      .then((userCredential) => {
+        currentUser = userCredential.user;
+        updateMenu();
+        window.location.hash = "home";
+      })
+      .catch((error) => {
+        alert("Erro ao criar conta: " + error.message);
+      });
+  }
+
+  // Página de Recuperação de Senha
+  function renderRecover() {
+    const recoverHTML = `
+      <h2>Recuperar Senha</h2>
+      <div class="session-form">
+        <label for="email">Email:</label>
+        <input type="email" id="email" placeholder="Enter your email" />
+        <button id="recoverBtn">Enviar Recuperação</button>
+      </div>
+      <p>
+        <a href="#login">Voltar para Login</a>
+      </p>
+    `;
+    document.getElementById("mainContent").innerHTML = recoverHTML;
+    document.getElementById("recoverBtn").addEventListener("click", recoverPassword);
+  }
+
+  function recoverPassword() {
+    const email = document.getElementById("email").value.trim();
+    if (email === "") {
+      alert("Por favor, insira seu email.");
+      return;
+    }
+    sendPasswordResetEmail(auth, email)
+      .then(() => {
+        alert("Email de recuperação enviado!");
+      })
+      .catch((error) => {
+        alert("Erro ao enviar email de recuperação: " + error.message);
+      });
+  }
+
+  // Logout com Firebase
   function logout(e) {
     e.preventDefault();
-    currentUser = null;
-    localStorage.removeItem("currentUser");
-    updateMenu();
-    window.location.hash = "login";
+    signOut(auth)
+      .then(() => {
+        currentUser = null;
+        updateMenu();
+        window.location.hash = "login";
+      })
+      .catch((error) => {
+        alert("Erro ao fazer logout: " + error.message);
+      });
   }
 
   // --- HOME SECTION com abas de categorias ---
@@ -271,7 +378,7 @@ document.addEventListener("DOMContentLoaded", function() {
   function renderProfile() {
     const profileHTML = `
       <h2>My Profile</h2>
-      <p><strong>Username:</strong> ${currentUser.username}</p>
+      <p><strong>Email:</strong> ${currentUser.email}</p>
       <p>Manage your information, view your posts, and track your activity.</p>
     `;
     document.getElementById("mainContent").innerHTML = profileHTML;
@@ -296,10 +403,7 @@ document.addEventListener("DOMContentLoaded", function() {
         <div class="session-info">
           <h3>Session Guidelines</h3>
           <p>
-            The objective of this scalping session is to capture small, consistent gains while managing your risk carefully. Every trade will be recorded so you can track your performance and learn from your results.
-          </p>
-          <p>
-            <strong>Important:</strong> Follow your predetermined rules and respect your stop-loss and profit targets. Avoid impulsive decisions; discipline is key to long-term success. Use this session to gather valuable data that will help refine your trading strategy.
+            The objective of this scalping session is to capture small, consistent gains while managing your risk carefully.
           </p>
         </div>
       </div>
@@ -802,7 +906,6 @@ document.addEventListener("DOMContentLoaded", function() {
             <p id="riskResult"></p>
             <p class="calc-explanation">
               This calculator determines the amount you should risk per trade based on a percentage of your bank.
-              <br><strong>Example:</strong> With a $1000 bank and 2% risk, you risk $20 per trade.
             </p>
           </div>
         </div>
@@ -825,7 +928,6 @@ document.addEventListener("DOMContentLoaded", function() {
             <p id="compoundResult"></p>
             <p class="calc-explanation">
               This calculator computes the future value of your investment by applying compound growth.
-              <br><strong>Example:</strong> A $1000 principal, at 12% annual rate compounded monthly for 12 months.
             </p>
           </div>
         </div>
@@ -842,7 +944,6 @@ document.addEventListener("DOMContentLoaded", function() {
             <p id="predictionResult"></p>
             <p class="calc-explanation">
               This calculator predicts your final bank balance based on the average profit/loss per trade and the number of trades.
-              <br><strong>Example:</strong> A $1000 bank, 10 trades with an average profit of $20 per trade results in $1200.
             </p>
           </div>
         </div>
@@ -859,7 +960,6 @@ document.addEventListener("DOMContentLoaded", function() {
             <p id="stopLossResult"></p>
             <p class="calc-explanation">
               This calculator helps determine your stop loss price based on your risk percentage and entry price.
-              <br><strong>Example:</strong> With a $1000 bank and 2% risk at an entry price of $50.
             </p>
           </div>
         </div>
@@ -875,7 +975,6 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById(target).classList.add("active");
       });
     });
-    // Bind dos botões das calculadoras
     document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
     document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
     document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
