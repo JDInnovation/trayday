@@ -1,14 +1,21 @@
-import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from './firebase-config.js';
+// script.js
+import { 
+  auth, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  sendPasswordResetEmail, 
+  db 
+} from './firebase-config.js';
 import { collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
-import { db } from './firebase-config.js';
-
 
 document.addEventListener("DOMContentLoaded", function() {
   // Variável para o usuário autenticado via Firebase
   let currentUser = null;
+  // sessionHistory vai armazenar as sessões recuperadas do Firestore
   let sessionHistory = [];
 
-  // Dummy articles para a Home com categorias e thumbnails
+  // Dummy articles para a Home
   const dummyArticles = [
     {
       id: 1,
@@ -18,7 +25,7 @@ document.addEventListener("DOMContentLoaded", function() {
       category: "noticia",
       excerpt: "Bitcoin reaches an unprecedented all-time high as global interest surges.",
       thumbnail: "thumb1.jpg",
-      content: "In a remarkable turn of events, Bitcoin has reached a new all-time high, attracting investors worldwide. Experts say that the surge is due to increased institutional interest and macroeconomic factors."
+      content: "In a remarkable turn of events, Bitcoin has reached a new all-time high, attracting investors worldwide."
     },
     {
       id: 2,
@@ -28,7 +35,7 @@ document.addEventListener("DOMContentLoaded", function() {
       category: "análises",
       excerpt: "Ethereum continues to lead the way in smart contract innovation.",
       thumbnail: "thumb2.jpg",
-      content: "Ethereum, the pioneer of smart contracts, remains at the forefront of blockchain technology. With a series of upgrades and an expanding ecosystem, ETH is positioning itself as the backbone for decentralized applications."
+      content: "Ethereum remains at the forefront of blockchain technology with constant upgrades."
     },
     {
       id: 3,
@@ -36,9 +43,9 @@ document.addEventListener("DOMContentLoaded", function() {
       title: "Scalping Strategies in Volatile Markets",
       date: "April 3, 2025",
       category: "informação",
-      excerpt: "Scalping can be highly profitable if executed with precision and discipline.",
+      excerpt: "Scalping can be highly profitable if executed with precision.",
       thumbnail: "thumb3.jpg",
-      content: "Scalping, a trading strategy focused on small but frequent profits, is gaining traction in volatile markets. In this comprehensive guide, we explore various scalping techniques, risk management strategies, and real-world examples."
+      content: "Scalping, a strategy focused on frequent small gains, is gaining traction in volatile markets."
     }
   ];
 
@@ -47,7 +54,7 @@ document.addEventListener("DOMContentLoaded", function() {
   let sessionTimerInterval;
   let sessionData = {
     initialBank: 0,
-    type: "normal",
+    type: "normal", // soft, normal, aggressive
     trades: [],
     riskPerTrade: 0,
     maxTrades: 0,
@@ -109,17 +116,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // Toggle da sidebar (apenas para desktop)
+  // Toggle da sidebar
   document.getElementById("sidebarToggle").addEventListener("click", function() {
     if (window.innerWidth > 768) {
       const sidebar = document.getElementById("sidebar");
       sidebar.classList.toggle("collapsed");
       const logoImg = document.getElementById("logoImg");
-      if (sidebar.classList.contains("collapsed")) {
-        logoImg.src = "traydayicon.png";
-      } else {
-        logoImg.src = "trayday.png";
-      }
+      logoImg.src = sidebar.classList.contains("collapsed") ? "traydayicon.png" : "trayday.png";
     }
   });
 
@@ -127,30 +130,18 @@ document.addEventListener("DOMContentLoaded", function() {
   auth.onAuthStateChanged((user) => {
     currentUser = user;
     updateMenu();
-    // Se o utilizador não estiver autenticado e a página exigir login, redireciona para login.
-    if (!currentUser) {
+    if (currentUser) {
+      // Recupera as sessões armazenadas para o utilizador atual
+      fetchUserSessions();
+    } else {
       let section = window.location.hash.substring(1);
       if (["perfil", "sessao", "resultados", "calculators"].includes(section)) {
         window.location.hash = "login";
       }
-auth.onAuthStateChanged((user) => {
-  currentUser = user;
-  updateMenu();
-  if (currentUser) {
-    fetchUserSessions();
-  } else {
-    // Se não estiver autenticado e a página exigir login, redireciona para login.
-    let section = window.location.hash.substring(1);
-    if (["perfil", "sessao", "resultados", "calculators"].includes(section)) {
-      window.location.hash = "login";
-    }
-  }
-});
-
     }
   });
 
-  // Carrega conteúdo com base no hash da URL
+  // Carrega o conteúdo com base no hash da URL
   function loadContent() {
     let section = window.location.hash.substring(1);
     if (!section) section = "home";
@@ -182,6 +173,7 @@ auth.onAuthStateChanged((user) => {
         renderSessionStart();
         break;
       case "resultados":
+        // Aguarda a recuperação dos dados antes de renderizar os resultados
         renderResultsPage();
         break;
       case "calculators":
@@ -191,11 +183,7 @@ auth.onAuthStateChanged((user) => {
         document.getElementById("mainContent").innerHTML = `<h2>Section not found</h2>`;
     }
     document.querySelectorAll(".sidebar ul li a").forEach(link => {
-      if (link.getAttribute("data-section") === section) {
-        link.classList.add("active");
-      } else {
-        link.classList.remove("active");
-      }
+      link.classList.toggle("active", link.getAttribute("data-section") === section);
     });
   }
 
@@ -203,9 +191,8 @@ auth.onAuthStateChanged((user) => {
   updateMenu();
   loadContent();
 
-  // --- FUNÇÕES DE AUTENTICAÇÃO ---
+  // --- AUTENTICAÇÃO: LOGIN, SIGNUP, RECUPERAÇÃO, LOGOUT ---
 
-  // Página de Login
   function renderLogin() {
     const loginHTML = `
       <h2>Login</h2>
@@ -243,23 +230,6 @@ auth.onAuthStateChanged((user) => {
       });
   }
 
-  // cenas de guardar os dados 
-
-async function storeSessionData(sessionSummary) {
-  try {
-    // Cria um documento na coleção "sessions"
-    await addDoc(collection(db, "sessions"), {
-      uid: currentUser.uid,
-      sessionSummary, // podes enviar o objeto completo
-      timestamp: new Date() // opcional, para saber quando foi guardada a sessão
-    });
-    console.log("Dados da sessão armazenados com sucesso.");
-  } catch (error) {
-    console.error("Erro ao armazenar sessão: ", error);
-  }
-}
-
- // Página de Criação de Conta (Signup)
   function renderSignUp() {
     const signUpHTML = `
       <h2>Criar Conta</h2>
@@ -295,28 +265,7 @@ async function storeSessionData(sessionSummary) {
         alert("Erro ao criar conta: " + error.message);
       });
   }
- // recupera dados anterior
-async function fetchUserSessions() {
-  if (!currentUser) return;
-  try {
-    const sessionsRef = collection(db, "sessions");
-    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
-    const querySnapshot = await getDocs(q);
-    // Armazena as sessões num array
-    const sessions = [];
-    querySnapshot.forEach((doc) => {
-      sessions.push({ id: doc.id, ...doc.data() });
-    });
-    // Aqui, podes atualizar a variável sessionHistory ou mesclar com os dados atuais
-    sessionHistory = sessions;
-    console.log("Sessões carregadas:", sessions);
-  } catch (error) {
-    console.error("Erro ao recuperar sessões: ", error);
-  }
-}
 
-  
-  // Página de Recuperação de Senha
   function renderRecover() {
     const recoverHTML = `
       <h2>Recuperar Senha</h2>
@@ -348,7 +297,6 @@ async function fetchUserSessions() {
       });
   }
 
-  // Logout com Firebase
   function logout(e) {
     e.preventDefault();
     signOut(auth)
@@ -362,7 +310,7 @@ async function fetchUserSessions() {
       });
   }
 
-  // --- HOME SECTION com abas de categorias ---
+  // --- HOME SECTION ---
   function renderHome() {
     const tabsHTML = `
       <div class="article-tabs">
@@ -379,8 +327,7 @@ async function fetchUserSessions() {
       tab.addEventListener("click", function() {
         document.querySelectorAll(".article-tab").forEach(t => t.classList.remove("active"));
         this.classList.add("active");
-        const category = this.getAttribute("data-category");
-        renderArticles(category);
+        renderArticles(this.getAttribute("data-category"));
       });
     });
   }
@@ -437,7 +384,7 @@ async function fetchUserSessions() {
     document.getElementById("mainContent").innerHTML = profileHTML;
   }
 
-  // --- SCALPING SECTION (Session) ---
+  // --- SCALPING SESSION ---
   function renderSessionStart() {
     const sessionStartHTML = `
       <div class="neon-box">
@@ -455,9 +402,7 @@ async function fetchUserSessions() {
         </div>
         <div class="session-info">
           <h3>Session Guidelines</h3>
-          <p>
-            The objective of this scalping session is to capture small, consistent gains while managing your risk carefully.
-          </p>
+          <p>The objective is to capture small gains with controlled risk.</p>
         </div>
       </div>
     `;
@@ -541,7 +486,7 @@ async function fetchUserSessions() {
         <div class="dashboard-row">
           <div class="dashboard-column">
             <h3>Enter Trade</h3>
-            <label for="tradeValue">Trade Value ($) (positive = gain, negative = loss):</label>
+            <label for="tradeValue">Trade Value ($):</label>
             <input type="number" id="tradeValue" placeholder="e.g., 50 or -30" />
             <button id="addTradeBtn">Add Trade</button>
           </div>
@@ -621,8 +566,7 @@ async function fetchUserSessions() {
     });
     document.querySelectorAll(".remove-btn").forEach(btn => {
       btn.addEventListener("click", function() {
-        const idx = parseInt(this.getAttribute("data-index"));
-        removeTrade(idx);
+        removeTrade(parseInt(this.getAttribute("data-index")));
       });
     });
     const totalTrades = sessionData.trades.length;
@@ -678,7 +622,8 @@ async function fetchUserSessions() {
     }
   }
 
-  function terminateSession() {
+  // --- TERMINAR SESSÃO E ARMAZENAR NO FIRESTORE ---
+  async function terminateSession() {
     if (!confirm("Are you sure you want to end the session?")) return;
     clearInterval(sessionTimerInterval);
     const endTime = new Date();
@@ -690,7 +635,6 @@ async function fetchUserSessions() {
     const wins = sessionData.trades.filter(trade => trade.value > 0).length;
     const accuracy = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(2) : 0;
     const sessionSummary = {
-      id: sessionHistory.length + 1,
       startTime: sessionStartTime,
       endTime: endTime,
       duration: totalDuration,
@@ -700,9 +644,10 @@ async function fetchUserSessions() {
       accuracy: accuracy,
       type: sessionData.type
     };
+    // Adiciona a sessão atual ao histórico em memória
     sessionHistory.push(sessionSummary);
-    storeSessionData(sessionSummary);
-
+    // Armazena no Firestore
+    await storeSessionData(sessionSummary);
     const summaryHTML = `
       <h2>Session Summary</h2>
       <div class="session-summary">
@@ -724,110 +669,62 @@ async function fetchUserSessions() {
     document.getElementById("exportSessionBtn").addEventListener("click", exportSessionResults);
   }
 
-  function exportSessionResults() {
-    const lastSession = sessionHistory[sessionHistory.length - 1];
-    let textContent = "Session Summary\n";
-    textContent += "--------------------\n";
-    textContent += "Start: " + lastSession.startTime.toLocaleString() + "\n";
-    textContent += "End: " + lastSession.endTime.toLocaleString() + "\n";
-    textContent += "Duration: " + lastSession.duration + "\n";
-    textContent += "Initial Bank: $" + lastSession.initialBank.toFixed(2) + "\n";
-    textContent += "Total Trades: " + lastSession.totalTrades + "\n";
-    textContent += "Total Gain/Loss: $" + lastSession.totalGainLoss.toFixed(2) + "\n";
-    textContent += "Accuracy: " + lastSession.accuracy + "%\n";
-    
-    const endDate = new Date(lastSession.endTime);
-    const year = endDate.getFullYear();
-    const month = ("0" + (endDate.getMonth() + 1)).slice(-2);
-    const day = ("0" + endDate.getDate()).slice(-2);
-    const hours = ("0" + endDate.getHours()).slice(-2);
-    const minutes = ("0" + endDate.getMinutes()).slice(-2);
-    const seconds = ("0" + endDate.getSeconds()).slice(-2);
-    const formattedDate = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-    
-    const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `session_summary_${formattedDate}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  async function storeSessionData(sessionSummary) {
+    try {
+      await addDoc(collection(db, "sessions"), {
+        uid: currentUser.uid,
+        startTime: sessionSummary.startTime,
+        endTime: sessionSummary.endTime,
+        duration: sessionSummary.duration,
+        initialBank: sessionSummary.initialBank,
+        totalTrades: sessionSummary.totalTrades,
+        totalGainLoss: sessionSummary.totalGainLoss,
+        accuracy: sessionSummary.accuracy,
+        type: sessionSummary.type,
+        timestamp: new Date()
+      });
+      console.log("Dados da sessão armazenados com sucesso.");
+    } catch (error) {
+      console.error("Erro ao armazenar sessão: ", error);
+    }
   }
 
-  // --- RESULTS SECTION (Enhanced Layout) ---
-  function parseDuration(durationStr) {
-    const parts = durationStr.split(":");
-    if (parts.length !== 3) return 0;
-    const hours = parseInt(parts[0]);
-    const minutes = parseInt(parts[1]);
-    const seconds = parseInt(parts[2]);
-    return hours * 3600 + minutes * 60 + seconds;
+  // --- RECUPERAR SESSÕES DO FIRESTORE ---
+  async function fetchUserSessions() {
+    if (!currentUser) return;
+    try {
+      const sessionsRef = collection(db, "sessions");
+      const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+      const querySnapshot = await getDocs(q);
+      const sessions = [];
+      querySnapshot.forEach((doc) => {
+        sessions.push({ id: doc.id, ...doc.data() });
+      });
+      // Atualiza o sessionHistory com as sessões recuperadas
+      sessionHistory = sessions;
+      console.log("Sessões carregadas:", sessions);
+    } catch (error) {
+      console.error("Erro ao recuperar sessões: ", error);
+    }
   }
-  
-  function formatDuration(totalSeconds) {
-    const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
-    const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
-    const seconds = String(totalSeconds % 60).padStart(2, "0");
-    return `${hours}:${minutes}:${seconds}`;
-  }
-  
-  function getAggregateStats() {
-    const totalSessions = sessionHistory.length;
-    let totalTrades = 0;
-    let totalGainLoss = 0;
-    let sumProfitPercent = 0;
-    let totalDurationSeconds = 0;
-    let bestSession = null;
-    let worstSession = null;
-    let totalAccuracy = 0;
-    
-    sessionHistory.forEach(s => {
-      totalTrades += s.totalTrades;
-      totalGainLoss += s.totalGainLoss;
-      const profitPercent = (s.totalGainLoss / s.initialBank) * 100;
-      sumProfitPercent += profitPercent;
-      totalDurationSeconds += parseDuration(s.duration);
-      totalAccuracy += parseFloat(s.accuracy);
-      if (bestSession === null || s.totalGainLoss > bestSession) {
-        bestSession = s.totalGainLoss;
-      }
-      if (worstSession === null || s.totalGainLoss < worstSession) {
-        worstSession = s.totalGainLoss;
-      }
-    });
-    
-    const avgProfitPercent = totalSessions > 0 ? sumProfitPercent / totalSessions : 0;
-    const avgAccuracy = totalSessions > 0 ? totalAccuracy / totalSessions : 0;
-    const avgDurationSeconds = totalSessions > 0 ? totalDurationSeconds / totalSessions : 0;
-    const avgDuration = formatDuration(Math.round(avgDurationSeconds));
-    
-    return {
-      totalSessions,
-      totalTrades,
-      totalGainLoss,
-      avgProfitPercent,
-      bestSession: bestSession || 0,
-      worstSession: worstSession || 0,
-      avgAccuracy,
-      avgDuration
-    };
-  }
-  
-  function renderResultsPage() {
-    const stats = getAggregateStats();
+
+  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS ---
+  async function renderResultsPage() {
+    // Antes de renderizar, busca as sessões atualizadas do Firestore
+    await fetchUserSessions();
+    // Ordena as sessões por timestamp (mais recentes primeiro)
+    const sessions = sessionHistory.sort((a, b) => b.timestamp - a.timestamp);
     const aggHTML = `
       <div class="aggregate-stats">
         <h3>Overall Performance</h3>
-        <p><strong>Total Sessions:</strong> ${stats.totalSessions}</p>
-        <p><strong>Total Trades:</strong> ${stats.totalTrades}</p>
-        <p><strong>Total Gain/Loss:</strong> $${stats.totalGainLoss.toFixed(2)}</p>
-        <p><strong>Average Profit (%):</strong> ${stats.avgProfitPercent.toFixed(2)}%</p>
-        <p><strong>Average Session Duration:</strong> ${stats.avgDuration}</p>
-        <p><strong>Best Session:</strong> $${stats.bestSession.toFixed(2)}</p>
-        <p><strong>Worst Session:</strong> $${stats.worstSession.toFixed(2)}</p>
-        <p><strong>Average Accuracy:</strong> ${stats.avgAccuracy.toFixed(2)}%</p>
+        <p><strong>Total Sessions:</strong> ${sessions.length}</p>
+        <p><strong>Total Trades:</strong> ${sessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
+        <p><strong>Total Gain/Loss:</strong> $${sessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
+        <p><strong>Average Profit (%):</strong> ${ (sessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / sessions.length || 0).toFixed(2) }%</p>
+        <p><strong>Average Session Duration:</strong> --</p>
+        <p><strong>Best Session:</strong> $${ Math.max(...sessions.map(s => s.totalGainLoss)).toFixed(2) }</p>
+        <p><strong>Worst Session:</strong> $${ Math.min(...sessions.map(s => s.totalGainLoss)).toFixed(2) }</p>
+        <p><strong>Average Accuracy:</strong> ${ (sessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / sessions.length || 0).toFixed(2) }%</p>
       </div>
     `;
     const resultsHTML = `
@@ -867,18 +764,18 @@ async function fetchUserSessions() {
       </div>
     `;
     document.getElementById("mainContent").innerHTML = resultsHTML;
-    renderResultsTable(sessionHistory);
-    initResultsBarChart(sessionHistory);
-    initResultsPieChart(sessionHistory);
+    renderResultsTable(sessions);
+    initResultsBarChart(sessions);
+    initResultsPieChart(sessions);
   }
   
   function renderResultsTable(sessions) {
     const tbody = document.querySelector("#resultsTable tbody");
     tbody.innerHTML = "";
-    sessions.forEach(s => {
+    sessions.forEach((s, index) => {
       const row = document.createElement("tr");
       row.innerHTML = `
-        <td>${s.id}</td>
+        <td>${index + 1}</td>
         <td>${new Date(s.startTime).toLocaleString()}</td>
         <td>${new Date(s.endTime).toLocaleString()}</td>
         <td>${s.duration}</td>
@@ -896,7 +793,7 @@ async function fetchUserSessions() {
     resultsChart = new Chart(ctx, {
       type: "bar",
       data: {
-        labels: sessions.map(s => `Session ${s.id}`),
+        labels: sessions.map((s, i) => `Session ${i + 1}`),
         datasets: [{
           label: "Total Gain/Loss ($)",
           data: sessions.map(s => s.totalGainLoss),
@@ -938,8 +835,8 @@ async function fetchUserSessions() {
       }
     });
   }
-  
-  // --- CALCULATORS SECTION (Interface por abas) ---
+
+  // --- CALCULATORS SECTION (mantido igual) ---
   function renderCalculatorsPage() {
     const calculatorsHTML = `
       <h2>Calculators</h2>
@@ -959,9 +856,6 @@ async function fetchUserSessions() {
             <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
             <button id="calcRiskBtn">Calculate Risk</button>
             <p id="riskResult"></p>
-            <p class="calc-explanation">
-              This calculator determines the amount you should risk per trade based on a percentage of your bank.
-            </p>
           </div>
         </div>
         <div id="compoundCalc" class="calc-item">
@@ -981,9 +875,6 @@ async function fetchUserSessions() {
             <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
             <button id="calcCompoundBtn">Calculate</button>
             <p id="compoundResult"></p>
-            <p class="calc-explanation">
-              This calculator computes the future value of your investment by applying compound growth.
-            </p>
           </div>
         </div>
         <div id="predictionCalc" class="calc-item">
@@ -997,9 +888,6 @@ async function fetchUserSessions() {
             <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
             <button id="calcPredictionBtn">Predict Final Bank</button>
             <p id="predictionResult"></p>
-            <p class="calc-explanation">
-              This calculator predicts your final bank balance based on the average profit/loss per trade and the number of trades.
-            </p>
           </div>
         </div>
         <div id="stopLossCalc" class="calc-item">
@@ -1013,9 +901,6 @@ async function fetchUserSessions() {
             <input type="number" id="entryPrice" placeholder="Enter entry price" />
             <button id="calcStopLossBtn">Calculate Stop Loss</button>
             <p id="stopLossResult"></p>
-            <p class="calc-explanation">
-              This calculator helps determine your stop loss price based on your risk percentage and entry price.
-            </p>
           </div>
         </div>
       </div>
@@ -1036,7 +921,6 @@ async function fetchUserSessions() {
     document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
   }
   
-  // Funções das calculadoras
   function calcRisk() {
     const bank = parseFloat(document.getElementById("riskInitialBank").value);
     const riskPct = parseFloat(document.getElementById("riskPercentage").value);
