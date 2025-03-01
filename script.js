@@ -133,6 +133,20 @@ document.addEventListener("DOMContentLoaded", function() {
       if (["perfil", "sessao", "resultados", "calculators"].includes(section)) {
         window.location.hash = "login";
       }
+auth.onAuthStateChanged((user) => {
+  currentUser = user;
+  updateMenu();
+  if (currentUser) {
+    fetchUserSessions();
+  } else {
+    // Se não estiver autenticado e a página exigir login, redireciona para login.
+    let section = window.location.hash.substring(1);
+    if (["perfil", "sessao", "resultados", "calculators"].includes(section)) {
+      window.location.hash = "login";
+    }
+  }
+});
+
     }
   });
 
@@ -281,7 +295,27 @@ async function storeSessionData(sessionSummary) {
         alert("Erro ao criar conta: " + error.message);
       });
   }
+ // recupera dados anterior
+async function fetchUserSessions() {
+  if (!currentUser) return;
+  try {
+    const sessionsRef = collection(db, "sessions");
+    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+    const querySnapshot = await getDocs(q);
+    // Armazena as sessões num array
+    const sessions = [];
+    querySnapshot.forEach((doc) => {
+      sessions.push({ id: doc.id, ...doc.data() });
+    });
+    // Aqui, podes atualizar a variável sessionHistory ou mesclar com os dados atuais
+    sessionHistory = sessions;
+    console.log("Sessões carregadas:", sessions);
+  } catch (error) {
+    console.error("Erro ao recuperar sessões: ", error);
+  }
+}
 
+  
   // Página de Recuperação de Senha
   function renderRecover() {
     const recoverHTML = `
