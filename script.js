@@ -1,4 +1,7 @@
 import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from './firebase-config.js';
+import { collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
+import { db } from './firebase-config.js';
+
 
 document.addEventListener("DOMContentLoaded", function() {
   // Variável para o usuário autenticado via Firebase
