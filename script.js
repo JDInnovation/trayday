@@ -12,7 +12,10 @@ import {
   addDoc, 
   query, 
   where, 
-  onSnapshot 
+  onSnapshot,
+  deleteDoc,
+  doc,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -390,8 +393,34 @@ document.addEventListener("DOMContentLoaded", function() {
       <h2>My Profile</h2>
       <p><strong>Email:</strong> ${currentUser.email}</p>
       <p>Manage your information, view your posts, and track your activity.</p>
+      <button id="clearHistoryBtn">Limpar Histórico</button>
     `;
     document.getElementById("mainContent").innerHTML = profileHTML;
+    document.getElementById("clearHistoryBtn").addEventListener("click", clearHistory);
+  }
+
+  // Função para limpar histórico: deleta todos os documentos de "sessions" deste usuário
+  async function clearHistory() {
+    if (!confirm("Tem certeza que deseja limpar todo o histórico de sessões?")) return;
+    try {
+      const sessionsRef = collection(db, "sessions");
+      const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+      const querySnapshot = await getDocs(q);
+      const promises = [];
+      querySnapshot.forEach((docSnap) => {
+        promises.push(deleteDoc(doc(db, "sessions", docSnap.id)));
+      });
+      await Promise.all(promises);
+      alert("Histórico limpo com sucesso.");
+      sessionHistory = [];
+      // Se estiver na aba de resultados, re-renderiza para mostrar que ficou vazio
+      if (window.location.hash === "#resultados") {
+        renderResultsPage();
+      }
+    } catch (error) {
+      console.error("Erro ao limpar histórico: ", error);
+      alert("Erro ao limpar histórico: " + error.message);
+    }
   }
 
   // --- SCALPING SESSION ---
@@ -724,13 +753,13 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS COM FILTRO ---
   async function renderResultsPage() {
-    // Obter o valor selecionado do filtro, se existir; caso contrário, usar "all"
+    // Obter o valor selecionado do filtro (se houver), senão "all"
     let filterValue = "all";
     if (document.getElementById("filterSelect")) {
       filterValue = document.getElementById("filterSelect").value;
     }
     
-    // Ordena as sessões por data de término (timestamp ou endTime)
+    // Ordena as sessões por data de término
     const sortedSessions = sessionHistory.sort((a, b) => {
       if (a.timestamp && b.timestamp) {
         return b.timestamp.toMillis() - a.timestamp.toMillis();
@@ -739,10 +768,10 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
     
-    // Aplica o filtro usando a data de término
+    // Aplica o filtro
     const filteredSessions = applyFilter(sortedSessions, filterValue);
     
-    // Cria um header com o título e o seletor de filtro (à direita)
+    // Header com título e seletor de filtro (à direita)
     const headerHTML = `
       <div class="results-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2>Session Results</h2>
@@ -814,7 +843,7 @@ document.addEventListener("DOMContentLoaded", function() {
     `;
     
     document.getElementById("mainContent").innerHTML = resultsHTML;
-    // Re-adiciona o listener para quando o usuário alterar o filtro
+    // Re-adiciona listener para o seletor de filtro
     document.getElementById("filterSelect").addEventListener("change", () => {
       renderResultsPage();
     });
@@ -828,7 +857,6 @@ document.addEventListener("DOMContentLoaded", function() {
     let filtered = sessions;
     switch(filterValue) {
       case "month":
-        // Início do mês
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         filtered = sessions.filter(s => new Date(s.endTime) >= startOfMonth);
         break;
@@ -837,7 +865,6 @@ document.addEventListener("DOMContentLoaded", function() {
         filtered = sessions.filter(s => new Date(s.endTime) >= startOfYear);
         break;
       case "week":
-        // Considerando que a semana começa na segunda
         const day = now.getDay();
         const diff = now.getDate() - (day === 0 ? 6 : day - 1);
         const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff);
@@ -867,7 +894,808 @@ document.addEventListener("DOMContentLoaded", function() {
     return filtered;
   }
 
-  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS (Tabela, Gráficos) ---
+  function renderResultsTable(sessions) {
+    const tbody = document.querySelector("#resultsTable tbody");
+    tbody.innerHTML = "";
+    sessions.forEach((s, index) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${new Date(s.startTime).toLocaleString()}</td>
+        <td>${new Date(s.endTime).toLocaleString()}</td>
+        <td>${s.duration}</td>
+        <td>$${s.initialBank.toFixed(2)}</td>
+        <td>${s.totalTrades}</td>
+        <td>$${s.totalGainLoss.toFixed(2)}</td>
+        <td>${s.accuracy}%</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+  
+  function initResultsBarChart(sessions) {
+    const ctx = document.getElementById("resultsBarChart").getContext("2d");
+    resultsChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: sessions.map((s, i) => `Session ${i + 1}`),
+        datasets: [{
+          label: "Total Gain/Loss ($)",
+          data: sessions.map(s => s.totalGainLoss),
+          backgroundColor: "rgba(0, 216, 255, 0.5)",
+          borderColor: "rgba(0, 216, 255, 1)",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Sessions" } },
+          y: { title: { display: true, text: "Gain/Loss ($)" }, beginAtZero: true }
+        }
+      }
+    });
+  }
+  
+  function initResultsPieChart(sessions) {
+    const profitCount = sessions.filter(s => s.totalGainLoss > 0).length;
+    const lossCount = sessions.filter(s => s.totalGainLoss <= 0).length;
+    const ctx = document.getElementById("resultsPieChart").getContext("2d");
+    new Chart(ctx, {
+      type: "pie",
+      data: {
+        labels: ["Profitable Sessions", "Losing Sessions"],
+        datasets: [{
+          data: [profitCount, lossCount],
+          backgroundColor: [
+            "rgba(0, 216, 255, 0.7)",
+            "rgba(255, 0, 0, 0.7)"
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "bottom" }
+        }
+      }
+    });
+  }
+
+  // --- CALCULATORS SECTION ---
+  function renderCalculatorsPage() {
+    const calculatorsHTML = `
+      <h2>Calculators</h2>
+      <div class="calc-tabs">
+        <span class="calc-tab active" data-target="riskCalc">Risk</span>
+        <span class="calc-tab" data-target="compoundCalc">Compound</span>
+        <span class="calc-tab" data-target="predictionCalc">Prediction</span>
+        <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
+        <span class="calc-tab" data-target="priceCalc">Preço Médio</span>
+      </div>
+      <div class="calc-content">
+        <div id="riskCalc" class="calc-item active">
+          <div class="calculators-section">
+            <h3>Risk Calculator</h3>
+            <label for="riskInitialBank">Initial Bank ($):</label>
+            <input type="number" id="riskInitialBank" placeholder="Enter your bank" />
+            <label for="riskPercentage">Risk Percentage (%):</label>
+            <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
+            <button id="calcRiskBtn">Calculate Risk</button>
+            <p id="riskResult"></p>
+          </div>
+        </div>
+        <div id="compoundCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Compound Interest Calculator</h3>
+            <label for="compoundPrincipal">Principal ($):</label>
+            <input type="number" id="compoundPrincipal" placeholder="Enter principal" />
+            <label for="compoundRate">Interest Rate (%):</label>
+            <input type="number" id="compoundRate" placeholder="Enter rate" />
+            <label for="compoundBasis">Calculation Basis:</label>
+            <select id="compoundBasis">
+              <option value="sessions">Sessions</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <label for="compoundPeriods">Number of Periods:</label>
+            <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
+            <button id="calcCompoundBtn">Calculate</button>
+            <p id="compoundResult"></p>
+          </div>
+        </div>
+        <div id="predictionCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Session Prediction Calculator</h3>
+            <label for="predInitialBank">Initial Bank ($):</label>
+            <input type="number" id="predInitialBank" placeholder="Enter your bank" />
+            <label for="predTradeCount">Number of Trades:</label>
+            <input type="number" id="predTradeCount" placeholder="Enter number of trades" />
+            <label for="predAvgProfit">Average Profit/Loss per Trade ($):</label>
+            <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
+            <button id="calcPredictionBtn">Predict Final Bank</button>
+            <p id="predictionResult"></p>
+          </div>
+        </div>
+        <div id="stopLossCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Stop Loss Calculator</h3>
+            <label for="stopInitialBank">Initial Bank ($):</label>
+            <input type="number" id="stopInitialBank" placeholder="Enter your bank" />
+            <label for="stopRiskPercentage">Risk Percentage per Trade (%):</label>
+            <input type="number" id="stopRiskPercentage" placeholder="Enter risk percentage" />
+            <label for="entryPrice">Entry Price ($):</label>
+            <input type="number" id="entryPrice" placeholder="Enter entry price" />
+            <button id="calcStopLossBtn">Calculate Stop Loss</button>
+            <p id="stopLossResult"></p>
+          </div>
+        </div>
+        <div id="priceCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Calculadora de Preço Médio</h3>
+            <label for="currentQuantity">Quantidade Atual:</label>
+            <input type="number" id="currentQuantity" placeholder="Ex: 100" />
+            <label for="currentPrice">Preço Atual:</label>
+            <input type="number" id="currentPrice" placeholder="Ex: 10.00" step="0.01" />
+            <label for="buyQuantity">Quantidade a Comprar:</label>
+            <input type="number" id="buyQuantity" placeholder="Ex: 50" />
+            <label for="buyPrice">Preço de Compra:</label>
+            <input type="number" id="buyPrice" placeholder="Ex: 12.00" step="0.01" />
+            <button id="calcAveragePriceBtn">Calcular Preço Médio</button>
+            <p id="averagePriceResult"></p>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = calculatorsHTML;
+    document.querySelectorAll(".calc-tab").forEach(tab => {
+      tab.addEventListener("click", function() {
+        document.querySelectorAll(".calc-tab").forEach(t => t.classList.remove("active"));
+        this.classList.add("active");
+        const target = this.getAttribute("data-target");
+        document.querySelectorAll(".calc-item").forEach(item => item.classList.remove("active"));
+        document.getElementById(target).classList.add("active");
+      });
+    });
+    document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
+    document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
+    document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
+    document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
+    document.getElementById("calcAveragePriceBtn").addEventListener("click", calcAveragePrice);
+  }
+
+  function calcRisk() {
+    const bank = parseFloat(document.getElementById("riskInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("riskPercentage").value);
+    if (isNaN(bank) || isNaN(riskPct)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskValue = (riskPct / 100) * bank;
+    document.getElementById("riskResult").textContent = `Risk per trade: $${riskValue.toFixed(2)}`;
+  }
+
+  function calcCompound() {
+    const principal = parseFloat(document.getElementById("compoundPrincipal").value);
+    const rate = parseFloat(document.getElementById("compoundRate").value);
+    const basis = document.getElementById("compoundBasis").value;
+    const periods = parseInt(document.getElementById("compoundPeriods").value);
+    if (isNaN(principal) || isNaN(rate) || isNaN(periods)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    let futureValue;
+    if (basis === "sessions") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    } else if (basis === "monthly") {
+      futureValue = principal * Math.pow(1 + (rate / 100) / 12, periods);
+    } else if (basis === "yearly") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    }
+    document.getElementById("compoundResult").textContent = `Future Value: $${futureValue.toFixed(2)}`;
+  }
+
+  function calcPrediction() {
+    const bank = parseFloat(document.getElementById("predInitialBank").value);
+    const tradeCount = parseInt(document.getElementById("predTradeCount").value);
+    const avgProfit = parseFloat(document.getElementById("predAvgProfit").value);
+    if (isNaN(bank) || isNaN(tradeCount) || isNaN(avgProfit)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const finalBank = bank + (tradeCount * avgProfit);
+    document.getElementById("predictionResult").textContent = `Predicted Final Bank: $${finalBank.toFixed(2)}`;
+  }
+
+  function calcStopLoss() {
+    const bank = parseFloat(document.getElementById("stopInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("stopRiskPercentage").value);
+    const entryPrice = parseFloat(document.getElementById("entryPrice").value);
+    if (isNaN(bank) || isNaN(riskPct) || isNaN(entryPrice)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskAmount = (riskPct / 100) * bank;
+    const stopLossPrice = entryPrice - riskAmount;
+    document.getElementById("stopLossResult").textContent = `Suggested Stop Loss Price: $${stopLossPrice.toFixed(2)}`;
+  }
+
+  function calcAveragePrice() {
+    const currentQty = parseFloat(document.getElementById("currentQuantity").value);
+    const currentPrice = parseFloat(document.getElementById("currentPrice").value);
+    const buyQty = parseFloat(document.getElementById("buyQuantity").value);
+    const buyPrice = parseFloat(document.getElementById("buyPrice").value);
+    if (isNaN(currentQty) || isNaN(currentPrice) || isNaN(buyQty) || isNaN(buyPrice)) {
+      alert("Por favor, preencha todos os campos com valores válidos.");
+      return;
+    }
+    const totalQty = currentQty + buyQty;
+    const newTotalValue = (currentQty * currentPrice) + (buyQty * buyPrice);
+    const averagePrice = newTotalValue / totalQty;
+    document.getElementById("averagePriceResult").textContent = `Preço Médio: $${averagePrice.toFixed(2)}`;
+  }
+
+  // --- LISTENER EM TEMPO REAL PARA AS SESSÕES ---
+  function startSessionsListener() {
+    if (!currentUser) return;
+    const sessionsRef = collection(db, "sessions");
+    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+    if (typeof unsubscribeSessions === "function") {
+      unsubscribeSessions();
+    }
+    unsubscribeSessions = onSnapshot(q, (snapshot) => {
+      const sessions = [];
+      snapshot.forEach(doc => {
+        sessions.push({ id: doc.id, ...doc.data() });
+      });
+      sessionHistory = sessions;
+      console.log("Sessões em tempo real:", sessionHistory);
+      if (window.location.hash === "#resultados") {
+        renderResultsPage();
+      }
+    }, (error) => {
+      console.error("Erro no onSnapshot:", error);
+    });
+  }
+
+  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS COM FILTRO ---
+  async function renderResultsPage() {
+    let filterValue = "all";
+    if (document.getElementById("filterSelect")) {
+      filterValue = document.getElementById("filterSelect").value;
+    }
+    
+    const sortedSessions = sessionHistory.sort((a, b) => {
+      if (a.timestamp && b.timestamp) {
+        return b.timestamp.toMillis() - a.timestamp.toMillis();
+      } else {
+        return new Date(b.endTime) - new Date(a.endTime);
+      }
+    });
+    
+    const filteredSessions = applyFilter(sortedSessions, filterValue);
+    
+    const headerHTML = `
+      <div class="results-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Session Results</h2>
+        <div class="results-filter">
+          <select id="filterSelect">
+            <option value="all" ${filterValue==="all" ? "selected" : ""}>Todas as sessões</option>
+            <option value="month" ${filterValue==="month" ? "selected" : ""}>Início do mês até agora</option>
+            <option value="year" ${filterValue==="year" ? "selected" : ""}>Início do ano até agora</option>
+            <option value="week" ${filterValue==="week" ? "selected" : ""}>Início da semana até agora</option>
+            <option value="last10" ${filterValue==="last10" ? "selected" : ""}>Últimas 10 sessões</option>
+            <option value="last25" ${filterValue==="last25" ? "selected" : ""}>Últimas 25 sessões</option>
+            <option value="last50" ${filterValue==="last50" ? "selected" : ""}>Últimas 50 sessões</option>
+            <option value="last100" ${filterValue==="last100" ? "selected" : ""}>Últimas 100 sessões</option>
+            <option value="last3months" ${filterValue==="last3months" ? "selected" : ""}>Últimos 3 meses</option>
+          </select>
+        </div>
+      </div>
+    `;
+    
+    const aggHTML = `
+      <div class="aggregate-stats">
+        <h3>Overall Performance</h3>
+        <p><strong>Total Sessions:</strong> ${filteredSessions.length}</p>
+        <p><strong>Total Trades:</strong> ${filteredSessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
+        <p><strong>Total Gain/Loss:</strong> $${filteredSessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
+        <p><strong>Average Profit (%):</strong> ${(filteredSessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
+        <p><strong>Average Session Duration:</strong> --</p>
+        <p><strong>Best Session:</strong> $${Math.max(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Worst Session:</strong> $${Math.min(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Average Accuracy:</strong> ${(filteredSessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
+      </div>
+    `;
+    
+    const resultsHTML = `
+      ${headerHTML}
+      ${aggHTML}
+      <div class="dashboard-row">
+        <div class="dashboard-column">
+          <h3>Profit/Loss Chart</h3>
+          <canvas id="resultsBarChart"></canvas>
+        </div>
+        <div class="dashboard-column">
+          <h3>Profit Distribution</h3>
+          <canvas id="resultsPieChart"></canvas>
+        </div>
+      </div>
+      <div class="dashboard-row">
+        <div class="dashboard-column full-width">
+          <h3>Detailed Session Table</h3>
+          <div class="table-responsive">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Duration</th>
+                  <th>Initial Bank</th>
+                  <th>Total Trades</th>
+                  <th>Total Gain/Loss</th>
+                  <th>Accuracy</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.getElementById("mainContent").innerHTML = resultsHTML;
+    document.getElementById("filterSelect").addEventListener("change", () => {
+      renderResultsPage();
+    });
+    renderResultsTable(filteredSessions);
+    initResultsBarChart(filteredSessions);
+    initResultsPieChart(filteredSessions);
+  }
+  
+  function applyFilter(sessions, filterValue) {
+    const now = new Date();
+    let filtered = sessions;
+    switch(filterValue) {
+      case "month":
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfMonth);
+        break;
+      case "year":
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfYear);
+        break;
+      case "week":
+        const day = now.getDay();
+        const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+        const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfWeek);
+        break;
+      case "last10":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 10);
+        break;
+      case "last25":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 25);
+        break;
+      case "last50":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 50);
+        break;
+      case "last100":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 100);
+        break;
+      case "last3months":
+        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        filtered = sessions.filter(s => new Date(s.endTime) >= threeMonthsAgo);
+        break;
+      case "all":
+      default:
+        filtered = sessions;
+        break;
+    }
+    return filtered;
+  }
+
+  function renderResultsTable(sessions) {
+    const tbody = document.querySelector("#resultsTable tbody");
+    tbody.innerHTML = "";
+    sessions.forEach((s, index) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${new Date(s.startTime).toLocaleString()}</td>
+        <td>${new Date(s.endTime).toLocaleString()}</td>
+        <td>${s.duration}</td>
+        <td>$${s.initialBank.toFixed(2)}</td>
+        <td>${s.totalTrades}</td>
+        <td>$${s.totalGainLoss.toFixed(2)}</td>
+        <td>${s.accuracy}%</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+  
+  function initResultsBarChart(sessions) {
+    const ctx = document.getElementById("resultsBarChart").getContext("2d");
+    resultsChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: sessions.map((s, i) => `Session ${i + 1}`),
+        datasets: [{
+          label: "Total Gain/Loss ($)",
+          data: sessions.map(s => s.totalGainLoss),
+          backgroundColor: "rgba(0, 216, 255, 0.5)",
+          borderColor: "rgba(0, 216, 255, 1)",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Sessions" } },
+          y: { title: { display: true, text: "Gain/Loss ($)" }, beginAtZero: true }
+        }
+      }
+    });
+  }
+  
+  function initResultsPieChart(sessions) {
+    const profitCount = sessions.filter(s => s.totalGainLoss > 0).length;
+    const lossCount = sessions.filter(s => s.totalGainLoss <= 0).length;
+    const ctx = document.getElementById("resultsPieChart").getContext("2d");
+    new Chart(ctx, {
+      type: "pie",
+      data: {
+        labels: ["Profitable Sessions", "Losing Sessions"],
+        datasets: [{
+          data: [profitCount, lossCount],
+          backgroundColor: [
+            "rgba(0, 216, 255, 0.7)",
+            "rgba(255, 0, 0, 0.7)"
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "bottom" }
+        }
+      }
+    });
+  }
+
+  // --- CALCULATORS SECTION ---
+  function renderCalculatorsPage() {
+    const calculatorsHTML = `
+      <h2>Calculators</h2>
+      <div class="calc-tabs">
+        <span class="calc-tab active" data-target="riskCalc">Risk</span>
+        <span class="calc-tab" data-target="compoundCalc">Compound</span>
+        <span class="calc-tab" data-target="predictionCalc">Prediction</span>
+        <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
+        <span class="calc-tab" data-target="priceCalc">Preço Médio</span>
+      </div>
+      <div class="calc-content">
+        <div id="riskCalc" class="calc-item active">
+          <div class="calculators-section">
+            <h3>Risk Calculator</h3>
+            <label for="riskInitialBank">Initial Bank ($):</label>
+            <input type="number" id="riskInitialBank" placeholder="Enter your bank" />
+            <label for="riskPercentage">Risk Percentage (%):</label>
+            <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
+            <button id="calcRiskBtn">Calculate Risk</button>
+            <p id="riskResult"></p>
+          </div>
+        </div>
+        <div id="compoundCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Compound Interest Calculator</h3>
+            <label for="compoundPrincipal">Principal ($):</label>
+            <input type="number" id="compoundPrincipal" placeholder="Enter principal" />
+            <label for="compoundRate">Interest Rate (%):</label>
+            <input type="number" id="compoundRate" placeholder="Enter rate" />
+            <label for="compoundBasis">Calculation Basis:</label>
+            <select id="compoundBasis">
+              <option value="sessions">Sessions</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <label for="compoundPeriods">Number of Periods:</label>
+            <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
+            <button id="calcCompoundBtn">Calculate</button>
+            <p id="compoundResult"></p>
+          </div>
+        </div>
+        <div id="predictionCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Session Prediction Calculator</h3>
+            <label for="predInitialBank">Initial Bank ($):</label>
+            <input type="number" id="predInitialBank" placeholder="Enter your bank" />
+            <label for="predTradeCount">Number of Trades:</label>
+            <input type="number" id="predTradeCount" placeholder="Enter number of trades" />
+            <label for="predAvgProfit">Average Profit/Loss per Trade ($):</label>
+            <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
+            <button id="calcPredictionBtn">Predict Final Bank</button>
+            <p id="predictionResult"></p>
+          </div>
+        </div>
+        <div id="stopLossCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Stop Loss Calculator</h3>
+            <label for="stopInitialBank">Initial Bank ($):</label>
+            <input type="number" id="stopInitialBank" placeholder="Enter your bank" />
+            <label for="stopRiskPercentage">Risk Percentage per Trade (%):</label>
+            <input type="number" id="stopRiskPercentage" placeholder="Enter risk percentage" />
+            <label for="entryPrice">Entry Price ($):</label>
+            <input type="number" id="entryPrice" placeholder="Enter entry price" />
+            <button id="calcStopLossBtn">Calculate Stop Loss</button>
+            <p id="stopLossResult"></p>
+          </div>
+        </div>
+        <div id="priceCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Calculadora de Preço Médio</h3>
+            <label for="currentQuantity">Quantidade Atual:</label>
+            <input type="number" id="currentQuantity" placeholder="Ex: 100" />
+            <label for="currentPrice">Preço Atual:</label>
+            <input type="number" id="currentPrice" placeholder="Ex: 10.00" step="0.01" />
+            <label for="buyQuantity">Quantidade a Comprar:</label>
+            <input type="number" id="buyQuantity" placeholder="Ex: 50" />
+            <label for="buyPrice">Preço de Compra:</label>
+            <input type="number" id="buyPrice" placeholder="Ex: 12.00" step="0.01" />
+            <button id="calcAveragePriceBtn">Calcular Preço Médio</button>
+            <p id="averagePriceResult"></p>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = calculatorsHTML;
+    document.querySelectorAll(".calc-tab").forEach(tab => {
+      tab.addEventListener("click", function() {
+        document.querySelectorAll(".calc-tab").forEach(t => t.classList.remove("active"));
+        this.classList.add("active");
+        const target = this.getAttribute("data-target");
+        document.querySelectorAll(".calc-item").forEach(item => item.classList.remove("active"));
+        document.getElementById(target).classList.add("active");
+      });
+    });
+    document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
+    document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
+    document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
+    document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
+    document.getElementById("calcAveragePriceBtn").addEventListener("click", calcAveragePrice);
+  }
+
+  function calcRisk() {
+    const bank = parseFloat(document.getElementById("riskInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("riskPercentage").value);
+    if (isNaN(bank) || isNaN(riskPct)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskValue = (riskPct / 100) * bank;
+    document.getElementById("riskResult").textContent = `Risk per trade: $${riskValue.toFixed(2)}`;
+  }
+
+  function calcCompound() {
+    const principal = parseFloat(document.getElementById("compoundPrincipal").value);
+    const rate = parseFloat(document.getElementById("compoundRate").value);
+    const basis = document.getElementById("compoundBasis").value;
+    const periods = parseInt(document.getElementById("compoundPeriods").value);
+    if (isNaN(principal) || isNaN(rate) || isNaN(periods)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    let futureValue;
+    if (basis === "sessions") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    } else if (basis === "monthly") {
+      futureValue = principal * Math.pow(1 + (rate / 100) / 12, periods);
+    } else if (basis === "yearly") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    }
+    document.getElementById("compoundResult").textContent = `Future Value: $${futureValue.toFixed(2)}`;
+  }
+
+  function calcPrediction() {
+    const bank = parseFloat(document.getElementById("predInitialBank").value);
+    const tradeCount = parseInt(document.getElementById("predTradeCount").value);
+    const avgProfit = parseFloat(document.getElementById("predAvgProfit").value);
+    if (isNaN(bank) || isNaN(tradeCount) || isNaN(avgProfit)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const finalBank = bank + (tradeCount * avgProfit);
+    document.getElementById("predictionResult").textContent = `Predicted Final Bank: $${finalBank.toFixed(2)}`;
+  }
+
+  function calcStopLoss() {
+    const bank = parseFloat(document.getElementById("stopInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("stopRiskPercentage").value);
+    const entryPrice = parseFloat(document.getElementById("entryPrice").value);
+    if (isNaN(bank) || isNaN(riskPct) || isNaN(entryPrice)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskAmount = (riskPct / 100) * bank;
+    const stopLossPrice = entryPrice - riskAmount;
+    document.getElementById("stopLossResult").textContent = `Suggested Stop Loss Price: $${stopLossPrice.toFixed(2)}`;
+  }
+
+  function calcAveragePrice() {
+    const currentQty = parseFloat(document.getElementById("currentQuantity").value);
+    const currentPrice = parseFloat(document.getElementById("currentPrice").value);
+    const buyQty = parseFloat(document.getElementById("buyQuantity").value);
+    const buyPrice = parseFloat(document.getElementById("buyPrice").value);
+    if (isNaN(currentQty) || isNaN(currentPrice) || isNaN(buyQty) || isNaN(buyPrice)) {
+      alert("Por favor, preencha todos os campos com valores válidos.");
+      return;
+    }
+    const totalQty = currentQty + buyQty;
+    const newTotalValue = (currentQty * currentPrice) + (buyQty * buyPrice);
+    const averagePrice = newTotalValue / totalQty;
+    document.getElementById("averagePriceResult").textContent = `Preço Médio: $${averagePrice.toFixed(2)}`;
+  }
+
+  // --- LISTENER EM TEMPO REAL PARA AS SESSÕES ---
+  function startSessionsListener() {
+    if (!currentUser) return;
+    const sessionsRef = collection(db, "sessions");
+    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+    if (typeof unsubscribeSessions === "function") {
+      unsubscribeSessions();
+    }
+    unsubscribeSessions = onSnapshot(q, (snapshot) => {
+      const sessions = [];
+      snapshot.forEach(doc => {
+        sessions.push({ id: doc.id, ...doc.data() });
+      });
+      sessionHistory = sessions;
+      console.log("Sessões em tempo real:", sessionHistory);
+      if (window.location.hash === "#resultados") {
+        renderResultsPage();
+      }
+    }, (error) => {
+      console.error("Erro no onSnapshot:", error);
+    });
+  }
+
+  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS COM FILTRO ---
+  async function renderResultsPage() {
+    let filterValue = "all";
+    if (document.getElementById("filterSelect")) {
+      filterValue = document.getElementById("filterSelect").value;
+    }
+    
+    const sortedSessions = sessionHistory.sort((a, b) => {
+      if (a.timestamp && b.timestamp) {
+        return b.timestamp.toMillis() - a.timestamp.toMillis();
+      } else {
+        return new Date(b.endTime) - new Date(a.endTime);
+      }
+    });
+    
+    const filteredSessions = applyFilter(sortedSessions, filterValue);
+    
+    const headerHTML = `
+      <div class="results-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Session Results</h2>
+        <div class="results-filter">
+          <select id="filterSelect">
+            <option value="all" ${filterValue==="all" ? "selected" : ""}>Todas as sessões</option>
+            <option value="month" ${filterValue==="month" ? "selected" : ""}>Início do mês até agora</option>
+            <option value="year" ${filterValue==="year" ? "selected" : ""}>Início do ano até agora</option>
+            <option value="week" ${filterValue==="week" ? "selected" : ""}>Início da semana até agora</option>
+            <option value="last10" ${filterValue==="last10" ? "selected" : ""}>Últimas 10 sessões</option>
+            <option value="last25" ${filterValue==="last25" ? "selected" : ""}>Últimas 25 sessões</option>
+            <option value="last50" ${filterValue==="last50" ? "selected" : ""}>Últimas 50 sessões</option>
+            <option value="last100" ${filterValue==="last100" ? "selected" : ""}>Últimas 100 sessões</option>
+            <option value="last3months" ${filterValue==="last3months" ? "selected" : ""}>Últimos 3 meses</option>
+          </select>
+        </div>
+      </div>
+    `;
+    
+    const aggHTML = `
+      <div class="aggregate-stats">
+        <h3>Overall Performance</h3>
+        <p><strong>Total Sessions:</strong> ${filteredSessions.length}</p>
+        <p><strong>Total Trades:</strong> ${filteredSessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
+        <p><strong>Total Gain/Loss:</strong> $${filteredSessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
+        <p><strong>Average Profit (%):</strong> ${(filteredSessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
+        <p><strong>Average Session Duration:</strong> --</p>
+        <p><strong>Best Session:</strong> $${Math.max(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Worst Session:</strong> $${Math.min(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Average Accuracy:</strong> ${(filteredSessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
+      </div>
+    `;
+    
+    const resultsHTML = `
+      ${headerHTML}
+      ${aggHTML}
+      <div class="dashboard-row">
+        <div class="dashboard-column">
+          <h3>Profit/Loss Chart</h3>
+          <canvas id="resultsBarChart"></canvas>
+        </div>
+        <div class="dashboard-column">
+          <h3>Profit Distribution</h3>
+          <canvas id="resultsPieChart"></canvas>
+        </div>
+      </div>
+      <div class="dashboard-row">
+        <div class="dashboard-column full-width">
+          <h3>Detailed Session Table</h3>
+          <div class="table-responsive">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Duration</th>
+                  <th>Initial Bank</th>
+                  <th>Total Trades</th>
+                  <th>Total Gain/Loss</th>
+                  <th>Accuracy</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.getElementById("mainContent").innerHTML = resultsHTML;
+    document.getElementById("filterSelect").addEventListener("change", () => {
+      renderResultsPage();
+    });
+    renderResultsTable(filteredSessions);
+    initResultsBarChart(filteredSessions);
+    initResultsPieChart(filteredSessions);
+  }
+  
+  function applyFilter(sessions, filterValue) {
+    const now = new Date();
+    let filtered = sessions;
+    switch(filterValue) {
+      case "month":
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfMonth);
+        break;
+      case "year":
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfYear);
+        break;
+      case "week":
+        const day = now.getDay();
+        const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+        const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfWeek);
+        break;
+      case "last10":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 10);
+        break;
+      case "last25":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 25);
+        break;
+      case "last50":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 50);
+        break;
+      case "last100":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 100);
+        break;
+      case "last3months":
+        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        filtered = sessions.filter(s => new Date(s.endTime) >= threeMonthsAgo);
+        break;
+      case "all":
+      default:
+        filtered = sessions;
+        break;
+    }
+    return filtered;
+  }
+
   function renderResultsTable(sessions) {
     const tbody = document.querySelector("#resultsTable tbody");
     tbody.innerHTML = "";
@@ -1011,6 +1839,7 @@ document.addEventListener("DOMContentLoaded", function() {
         <span class="calc-tab" data-target="compoundCalc">Compound</span>
         <span class="calc-tab" data-target="predictionCalc">Prediction</span>
         <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
+        <span class="calc-tab" data-target="priceCalc">Preço Médio</span>
       </div>
       <div class="calc-content">
         <div id="riskCalc" class="calc-item active">
@@ -1069,6 +1898,21 @@ document.addEventListener("DOMContentLoaded", function() {
             <p id="stopLossResult"></p>
           </div>
         </div>
+        <div id="priceCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Calculadora de Preço Médio</h3>
+            <label for="currentQuantity">Quantidade Atual:</label>
+            <input type="number" id="currentQuantity" placeholder="Ex: 100" />
+            <label for="currentPrice">Preço Atual:</label>
+            <input type="number" id="currentPrice" placeholder="Ex: 10.00" step="0.01" />
+            <label for="buyQuantity">Quantidade a Comprar:</label>
+            <input type="number" id="buyQuantity" placeholder="Ex: 50" />
+            <label for="buyPrice">Preço de Compra:</label>
+            <input type="number" id="buyPrice" placeholder="Ex: 12.00" step="0.01" />
+            <button id="calcAveragePriceBtn">Calcular Preço Médio</button>
+            <p id="averagePriceResult"></p>
+          </div>
+        </div>
       </div>
     `;
     document.getElementById("mainContent").innerHTML = calculatorsHTML;
@@ -1085,5 +1929,476 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
     document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
     document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
+    document.getElementById("calcAveragePriceBtn").addEventListener("click", calcAveragePrice);
   }
+
+  // --- FUNÇÕES DAS CALCULADORAS ---
+  function calcRisk() {
+    const bank = parseFloat(document.getElementById("riskInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("riskPercentage").value);
+    if (isNaN(bank) || isNaN(riskPct)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskValue = (riskPct / 100) * bank;
+    document.getElementById("riskResult").textContent = `Risk per trade: $${riskValue.toFixed(2)}`;
+  }
+
+  function calcCompound() {
+    const principal = parseFloat(document.getElementById("compoundPrincipal").value);
+    const rate = parseFloat(document.getElementById("compoundRate").value);
+    const basis = document.getElementById("compoundBasis").value;
+    const periods = parseInt(document.getElementById("compoundPeriods").value);
+    if (isNaN(principal) || isNaN(rate) || isNaN(periods)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    let futureValue;
+    if (basis === "sessions") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    } else if (basis === "monthly") {
+      futureValue = principal * Math.pow(1 + (rate / 100) / 12, periods);
+    } else if (basis === "yearly") {
+      futureValue = principal * Math.pow(1 + rate / 100, periods);
+    }
+    document.getElementById("compoundResult").textContent = `Future Value: $${futureValue.toFixed(2)}`;
+  }
+
+  function calcPrediction() {
+    const bank = parseFloat(document.getElementById("predInitialBank").value);
+    const tradeCount = parseInt(document.getElementById("predTradeCount").value);
+    const avgProfit = parseFloat(document.getElementById("predAvgProfit").value);
+    if (isNaN(bank) || isNaN(tradeCount) || isNaN(avgProfit)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const finalBank = bank + (tradeCount * avgProfit);
+    document.getElementById("predictionResult").textContent = `Predicted Final Bank: $${finalBank.toFixed(2)}`;
+  }
+
+  function calcStopLoss() {
+    const bank = parseFloat(document.getElementById("stopInitialBank").value);
+    const riskPct = parseFloat(document.getElementById("stopRiskPercentage").value);
+    const entryPrice = parseFloat(document.getElementById("entryPrice").value);
+    if (isNaN(bank) || isNaN(riskPct) || isNaN(entryPrice)) {
+      alert("Please enter valid values.");
+      return;
+    }
+    const riskAmount = (riskPct / 100) * bank;
+    const stopLossPrice = entryPrice - riskAmount;
+    document.getElementById("stopLossResult").textContent = `Suggested Stop Loss Price: $${stopLossPrice.toFixed(2)}`;
+  }
+
+  function calcAveragePrice() {
+    const currentQty = parseFloat(document.getElementById("currentQuantity").value);
+    const currentPrice = parseFloat(document.getElementById("currentPrice").value);
+    const buyQty = parseFloat(document.getElementById("buyQuantity").value);
+    const buyPrice = parseFloat(document.getElementById("buyPrice").value);
+    if (isNaN(currentQty) || isNaN(currentPrice) || isNaN(buyQty) || isNaN(buyPrice)) {
+      alert("Por favor, preencha todos os campos com valores válidos.");
+      return;
+    }
+    const totalQty = currentQty + buyQty;
+    const newTotalValue = (currentQty * currentPrice) + (buyQty * buyPrice);
+    const averagePrice = newTotalValue / totalQty;
+    document.getElementById("averagePriceResult").textContent = `Preço Médio: $${averagePrice.toFixed(2)}`;
+  }
+
+  // --- LISTENER EM TEMPO REAL PARA AS SESSÕES ---
+  function startSessionsListener() {
+    if (!currentUser) return;
+    const sessionsRef = collection(db, "sessions");
+    const q = query(sessionsRef, where("uid", "==", currentUser.uid));
+    if (typeof unsubscribeSessions === "function") {
+      unsubscribeSessions();
+    }
+    unsubscribeSessions = onSnapshot(q, (snapshot) => {
+      const sessions = [];
+      snapshot.forEach(doc => {
+        sessions.push({ id: doc.id, ...doc.data() });
+      });
+      sessionHistory = sessions;
+      console.log("Sessões em tempo real:", sessionHistory);
+      if (window.location.hash === "#resultados") {
+        renderResultsPage();
+      }
+    }, (error) => {
+      console.error("Erro no onSnapshot:", error);
+    });
+  }
+
+  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS COM FILTRO ---
+  async function renderResultsPage() {
+    let filterValue = "all";
+    if (document.getElementById("filterSelect")) {
+      filterValue = document.getElementById("filterSelect").value;
+    }
+    
+    const sortedSessions = sessionHistory.sort((a, b) => {
+      if (a.timestamp && b.timestamp) {
+        return b.timestamp.toMillis() - a.timestamp.toMillis();
+      } else {
+        return new Date(b.endTime) - new Date(a.endTime);
+      }
+    });
+    
+    const filteredSessions = applyFilter(sortedSessions, filterValue);
+    
+    const headerHTML = `
+      <div class="results-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Session Results</h2>
+        <div class="results-filter">
+          <select id="filterSelect">
+            <option value="all" ${filterValue==="all" ? "selected" : ""}>Todas as sessões</option>
+            <option value="month" ${filterValue==="month" ? "selected" : ""}>Início do mês até agora</option>
+            <option value="year" ${filterValue==="year" ? "selected" : ""}>Início do ano até agora</option>
+            <option value="week" ${filterValue==="week" ? "selected" : ""}>Início da semana até agora</option>
+            <option value="last10" ${filterValue==="last10" ? "selected" : ""}>Últimas 10 sessões</option>
+            <option value="last25" ${filterValue==="last25" ? "selected" : ""}>Últimas 25 sessões</option>
+            <option value="last50" ${filterValue==="last50" ? "selected" : ""}>Últimas 50 sessões</option>
+            <option value="last100" ${filterValue==="last100" ? "selected" : ""}>Últimas 100 sessões</option>
+            <option value="last3months" ${filterValue==="last3months" ? "selected" : ""}>Últimos 3 meses</option>
+          </select>
+        </div>
+      </div>
+    `;
+    
+    const aggHTML = `
+      <div class="aggregate-stats">
+        <h3>Overall Performance</h3>
+        <p><strong>Total Sessions:</strong> ${filteredSessions.length}</p>
+        <p><strong>Total Trades:</strong> ${filteredSessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
+        <p><strong>Total Gain/Loss:</strong> $${filteredSessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
+        <p><strong>Average Profit (%):</strong> ${(filteredSessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
+        <p><strong>Average Session Duration:</strong> --</p>
+        <p><strong>Best Session:</strong> $${Math.max(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Worst Session:</strong> $${Math.min(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
+        <p><strong>Average Accuracy:</strong> ${(filteredSessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
+      </div>
+    `;
+    
+    const resultsHTML = `
+      ${headerHTML}
+      ${aggHTML}
+      <div class="dashboard-row">
+        <div class="dashboard-column">
+          <h3>Profit/Loss Chart</h3>
+          <canvas id="resultsBarChart"></canvas>
+        </div>
+        <div class="dashboard-column">
+          <h3>Profit Distribution</h3>
+          <canvas id="resultsPieChart"></canvas>
+        </div>
+      </div>
+      <div class="dashboard-row">
+        <div class="dashboard-column full-width">
+          <h3>Detailed Session Table</h3>
+          <div class="table-responsive">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Duration</th>
+                  <th>Initial Bank</th>
+                  <th>Total Trades</th>
+                  <th>Total Gain/Loss</th>
+                  <th>Accuracy</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.getElementById("mainContent").innerHTML = resultsHTML;
+    document.getElementById("filterSelect").addEventListener("change", () => {
+      renderResultsPage();
+    });
+    renderResultsTable(filteredSessions);
+    initResultsBarChart(filteredSessions);
+    initResultsPieChart(filteredSessions);
+  }
+  
+  function applyFilter(sessions, filterValue) {
+    const now = new Date();
+    let filtered = sessions;
+    switch(filterValue) {
+      case "month":
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfMonth);
+        break;
+      case "year":
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfYear);
+        break;
+      case "week":
+        const day = now.getDay();
+        const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+        const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff);
+        filtered = sessions.filter(s => new Date(s.endTime) >= startOfWeek);
+        break;
+      case "last10":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 10);
+        break;
+      case "last25":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 25);
+        break;
+      case "last50":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 50);
+        break;
+      case "last100":
+        filtered = sessions.sort((a, b) => new Date(b.endTime) - new Date(a.endTime)).slice(0, 100);
+        break;
+      case "last3months":
+        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        filtered = sessions.filter(s => new Date(s.endTime) >= threeMonthsAgo);
+        break;
+      case "all":
+      default:
+        filtered = sessions;
+        break;
+    }
+    return filtered;
+  }
+
+  function renderResultsTable(sessions) {
+    const tbody = document.querySelector("#resultsTable tbody");
+    tbody.innerHTML = "";
+    sessions.forEach((s, index) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${new Date(s.startTime).toLocaleString()}</td>
+        <td>${new Date(s.endTime).toLocaleString()}</td>
+        <td>${s.duration}</td>
+        <td>$${s.initialBank.toFixed(2)}</td>
+        <td>${s.totalTrades}</td>
+        <td>$${s.totalGainLoss.toFixed(2)}</td>
+        <td>${s.accuracy}%</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+  
+  function initResultsBarChart(sessions) {
+    const ctx = document.getElementById("resultsBarChart").getContext("2d");
+    resultsChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: sessions.map((s, i) => `Session ${i + 1}`),
+        datasets: [{
+          label: "Total Gain/Loss ($)",
+          data: sessions.map(s => s.totalGainLoss),
+          backgroundColor: "rgba(0, 216, 255, 0.5)",
+          borderColor: "rgba(0, 216, 255, 1)",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Sessions" } },
+          y: { title: { display: true, text: "Gain/Loss ($)" }, beginAtZero: true }
+        }
+      }
+    });
+  }
+  
+  function initResultsPieChart(sessions) {
+    const profitCount = sessions.filter(s => s.totalGainLoss > 0).length;
+    const lossCount = sessions.filter(s => s.totalGainLoss <= 0).length;
+    const ctx = document.getElementById("resultsPieChart").getContext("2d");
+    new Chart(ctx, {
+      type: "pie",
+      data: {
+        labels: ["Profitable Sessions", "Losing Sessions"],
+        datasets: [{
+          data: [profitCount, lossCount],
+          backgroundColor: [
+            "rgba(0, 216, 255, 0.7)",
+            "rgba(255, 0, 0, 0.7)"
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "bottom" }
+        }
+      }
+    });
+  }
+
+  // --- TERMINAR SESSÃO E ARMAZENAR NO FIRESTORE ---
+  async function terminateSession() {
+    if (!confirm("Are you sure you want to end the session?")) return;
+    clearInterval(sessionTimerInterval);
+    const endTime = new Date();
+    const durationMs = endTime - sessionStartTime;
+    const d = new Date(durationMs);
+    const totalDuration = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")}`;
+    const totalTrades = sessionData.trades.length;
+    const totalGainLoss = sessionData.trades.reduce((sum, trade) => sum + trade.value, 0);
+    const wins = sessionData.trades.filter(trade => trade.value > 0).length;
+    const accuracy = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(2) : 0;
+    const sessionSummary = {
+      startTime: sessionStartTime,
+      endTime: endTime,
+      duration: totalDuration,
+      initialBank: sessionData.initialBank,
+      totalTrades: totalTrades,
+      totalGainLoss: totalGainLoss,
+      accuracy: accuracy,
+      type: sessionData.type
+    };
+    // Adiciona a sessão atual ao histórico em memória
+    sessionHistory.push(sessionSummary);
+    // Armazena no Firestore
+    await storeSessionData(sessionSummary);
+    const summaryHTML = `
+      <h2>Session Summary</h2>
+      <div class="session-summary">
+        <p><strong>Start:</strong> ${sessionSummary.startTime.toLocaleString()}</p>
+        <p><strong>End:</strong> ${sessionSummary.endTime.toLocaleString()}</p>
+        <p><strong>Duration:</strong> ${sessionSummary.duration}</p>
+        <p><strong>Initial Bank:</strong> $${sessionSummary.initialBank.toFixed(2)}</p>
+        <p><strong>Total Trades:</strong> ${sessionSummary.totalTrades}</p>
+        <p><strong>Total Gain/Loss:</strong> $${sessionSummary.totalGainLoss.toFixed(2)}</p>
+        <p><strong>Accuracy:</strong> ${sessionSummary.accuracy}%</p>
+      </div>
+      <button id="backSessionBtn">Back</button>
+      <button id="exportSessionBtn">Export Results</button>
+    `;
+    document.getElementById("mainContent").innerHTML = summaryHTML;
+    document.getElementById("backSessionBtn").addEventListener("click", () => {
+      window.location.hash = "home";
+    });
+    document.getElementById("exportSessionBtn").addEventListener("click", exportSessionResults);
+  }
+
+  async function storeSessionData(sessionSummary) {
+    try {
+      await addDoc(collection(db, "sessions"), {
+        uid: currentUser.uid,
+        startTime: sessionSummary.startTime,
+        endTime: sessionSummary.endTime,
+        duration: sessionSummary.duration,
+        initialBank: sessionSummary.initialBank,
+        totalTrades: sessionSummary.totalTrades,
+        totalGainLoss: sessionSummary.totalGainLoss,
+        accuracy: sessionSummary.accuracy,
+        type: sessionSummary.type,
+        timestamp: new Date()
+      });
+      console.log("Dados da sessão armazenados com sucesso.");
+    } catch (error) {
+      console.error("Erro ao armazenar sessão: ", error);
+    }
+  }
+
+  // --- CALCULATORS SECTION ---
+  function renderCalculatorsPage() {
+    const calculatorsHTML = `
+      <h2>Calculators</h2>
+      <div class="calc-tabs">
+        <span class="calc-tab active" data-target="riskCalc">Risk</span>
+        <span class="calc-tab" data-target="compoundCalc">Compound</span>
+        <span class="calc-tab" data-target="predictionCalc">Prediction</span>
+        <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
+        <span class="calc-tab" data-target="priceCalc">Preço Médio</span>
+      </div>
+      <div class="calc-content">
+        <div id="riskCalc" class="calc-item active">
+          <div class="calculators-section">
+            <h3>Risk Calculator</h3>
+            <label for="riskInitialBank">Initial Bank ($):</label>
+            <input type="number" id="riskInitialBank" placeholder="Enter your bank" />
+            <label for="riskPercentage">Risk Percentage (%):</label>
+            <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
+            <button id="calcRiskBtn">Calculate Risk</button>
+            <p id="riskResult"></p>
+          </div>
+        </div>
+        <div id="compoundCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Compound Interest Calculator</h3>
+            <label for="compoundPrincipal">Principal ($):</label>
+            <input type="number" id="compoundPrincipal" placeholder="Enter principal" />
+            <label for="compoundRate">Interest Rate (%):</label>
+            <input type="number" id="compoundRate" placeholder="Enter rate" />
+            <label for="compoundBasis">Calculation Basis:</label>
+            <select id="compoundBasis">
+              <option value="sessions">Sessions</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <label for="compoundPeriods">Number of Periods:</label>
+            <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
+            <button id="calcCompoundBtn">Calculate</button>
+            <p id="compoundResult"></p>
+          </div>
+        </div>
+        <div id="predictionCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Session Prediction Calculator</h3>
+            <label for="predInitialBank">Initial Bank ($):</label>
+            <input type="number" id="predInitialBank" placeholder="Enter your bank" />
+            <label for="predTradeCount">Number of Trades:</label>
+            <input type="number" id="predTradeCount" placeholder="Enter number of trades" />
+            <label for="predAvgProfit">Average Profit/Loss per Trade ($):</label>
+            <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
+            <button id="calcPredictionBtn">Predict Final Bank</button>
+            <p id="predictionResult"></p>
+          </div>
+        </div>
+        <div id="stopLossCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Stop Loss Calculator</h3>
+            <label for="stopInitialBank">Initial Bank ($):</label>
+            <input type="number" id="stopInitialBank" placeholder="Enter your bank" />
+            <label for="stopRiskPercentage">Risk Percentage per Trade (%):</label>
+            <input type="number" id="stopRiskPercentage" placeholder="Enter risk percentage" />
+            <label for="entryPrice">Entry Price ($):</label>
+            <input type="number" id="entryPrice" placeholder="Enter entry price" />
+            <button id="calcStopLossBtn">Calculate Stop Loss</button>
+            <p id="stopLossResult"></p>
+          </div>
+        </div>
+        <div id="priceCalc" class="calc-item">
+          <div class="calculators-section">
+            <h3>Calculadora de Preço Médio</h3>
+            <label for="currentQuantity">Quantidade Atual:</label>
+            <input type="number" id="currentQuantity" placeholder="Ex: 100" />
+            <label for="currentPrice">Preço Atual:</label>
+            <input type="number" id="currentPrice" placeholder="Ex: 10.00" step="0.01" />
+            <label for="buyQuantity">Quantidade a Comprar:</label>
+            <input type="number" id="buyQuantity" placeholder="Ex: 50" />
+            <label for="buyPrice">Preço de Compra:</label>
+            <input type="number" id="buyPrice" placeholder="Ex: 12.00" step="0.01" />
+            <button id="calcAveragePriceBtn">Calcular Preço Médio</button>
+            <p id="averagePriceResult"></p>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = calculatorsHTML;
+    document.querySelectorAll(".calc-tab").forEach(tab => {
+      tab.addEventListener("click", function() {
+        document.querySelectorAll(".calc-tab").forEach(t => t.classList.remove("active"));
+        this.classList.add("active");
+        const target = this.getAttribute("data-target");
+        document.querySelectorAll(".calc-item").forEach(item => item.classList.remove("active"));
+        document.getElementById(target).classList.add("active");
+      });
+    });
+    document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
+    document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
+    document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
+    document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
+    document.getElementById("calcAveragePriceBtn").addEventListener("click", calcAveragePrice);
+  }
+
 });
