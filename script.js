@@ -2302,6 +2302,78 @@ document.addEventListener("DOMContentLoaded", function() {
       console.error("Erro ao armazenar sessão: ", error);
     }
   }
+    // Função para renderizar a página de criptomoedas
+function renderCryptosPage() {
+  document.getElementById("mainContent").innerHTML = `
+    <div class="cryptos-header" style="display: flex; justify-content: space-between; align-items: center;">
+      <h2>Top 20 Criptomoedas por Market Cap</h2>
+    </div>
+    <div id="cryptosContent">Carregando dados...</div>
+  `;
+  fetchCryptosData();
+}
+
+// Função que busca os dados da API do CoinMarketCap
+function fetchCryptosData() {
+  fetch("https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest?limit=20", {
+    headers: { "X-CMC_PRO_API_KEY": "ed14d249-2ae2-4997-80d4-3c40ca02323d" }
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status.error_code !== 0) {
+        document.getElementById("cryptosContent").innerHTML = `<p>Erro: ${data.status.error_message}</p>`;
+        return;
+      }
+      renderCryptosTable(data.data);
+    })
+    .catch(err => {
+      document.getElementById("cryptosContent").innerHTML = `<p>Erro ao carregar dados: ${err.message}</p>`;
+    });
+}
+
+// Função que monta a tabela com os dados das criptomoedas
+function renderCryptosTable(cryptos) {
+  let tableHTML = `
+    <table class="cryptos-table" style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: var(--secondary-color);">
+          <th style="padding: 8px; border: 1px solid #333;">Nome</th>
+          <th style="padding: 8px; border: 1px solid #333;">Ticker</th>
+          <th style="padding: 8px; border: 1px solid #333;">Preço</th>
+          <th style="padding: 8px; border: 1px solid #333;">Market Cap</th>
+          <th style="padding: 8px; border: 1px solid #333;">24h %</th>
+          <th style="padding: 8px; border: 1px solid #333;">7d %</th>
+          <th style="padding: 8px; border: 1px solid #333;">30d %</th>
+          <th style="padding: 8px; border: 1px solid #333;">Volume (24h)</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  cryptos.forEach(crypto => {
+    tableHTML += `
+      <tr style="text-align: center;">
+        <td style="padding: 8px; border: 1px solid #333;">${crypto.name}</td>
+        <td style="padding: 8px; border: 1px solid #333;">${crypto.symbol}</td>
+        <td style="padding: 8px; border: 1px solid #333;">$${crypto.quote.USD.price.toFixed(2)}</td>
+        <td style="padding: 8px; border: 1px solid #333;">$${formatNumber(crypto.quote.USD.market_cap)}</td>
+        <td style="padding: 8px; border: 1px solid #333;">${crypto.quote.USD.percent_change_24h.toFixed(2)}%</td>
+        <td style="padding: 8px; border: 1px solid #333;">${crypto.quote.USD.percent_change_7d.toFixed(2)}%</td>
+        <td style="padding: 8px; border: 1px solid #333;">${crypto.quote.USD.percent_change_30d.toFixed(2)}%</td>
+        <td style="padding: 8px; border: 1px solid #333;">$${formatNumber(crypto.quote.USD.volume_24h)}</td>
+      </tr>
+    `;
+  });
+  tableHTML += `
+      </tbody>
+    </table>
+  `;
+  document.getElementById("cryptosContent").innerHTML = tableHTML;
+}
+
+// Função auxiliar para formatar números grandes com separadores
+function formatNumber(num) {
+  return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
 
   // --- CALCULATORS SECTION ---
   function renderCalculatorsPage() {
@@ -2404,78 +2476,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
     document.getElementById("calcAveragePriceBtn").addEventListener("click", calcAveragePrice);
   }
-  // Função para renderizar a página de criptomoedas
-function renderCryptosPage() {
-  document.getElementById("mainContent").innerHTML = `
-    <div class="cryptos-header" style="display: flex; justify-content: space-between; align-items: center;">
-      <h2>Top 20 Criptomoedas por Market Cap</h2>
-    </div>
-    <div id="cryptosContent">Carregando dados...</div>
-  `;
-  fetchCryptosData();
-}
 
-// Função que busca os dados da API do CoinMarketCap
-function fetchCryptosData() {
-  fetch("https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest?limit=20", {
-    headers: { "X-CMC_PRO_API_KEY": "ed14d249-2ae2-4997-80d4-3c40ca02323d" }
-  })
-    .then(response => response.json())
-    .then(data => {
-      if (data.status.error_code !== 0) {
-        document.getElementById("cryptosContent").innerHTML = `<p>Erro: ${data.status.error_message}</p>`;
-        return;
-      }
-      renderCryptosTable(data.data);
-    })
-    .catch(err => {
-      document.getElementById("cryptosContent").innerHTML = `<p>Erro ao carregar dados: ${err.message}</p>`;
-    });
-}
-
-// Função que monta a tabela com os dados das criptomoedas
-function renderCryptosTable(cryptos) {
-  let tableHTML = `
-    <table class="cryptos-table" style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr style="background-color: var(--secondary-color);">
-          <th style="padding: 8px; border: 1px solid #333;">Nome</th>
-          <th style="padding: 8px; border: 1px solid #333;">Ticker</th>
-          <th style="padding: 8px; border: 1px solid #333;">Preço</th>
-          <th style="padding: 8px; border: 1px solid #333;">Market Cap</th>
-          <th style="padding: 8px; border: 1px solid #333;">24h %</th>
-          <th style="padding: 8px; border: 1px solid #333;">7d %</th>
-          <th style="padding: 8px; border: 1px solid #333;">30d %</th>
-          <th style="padding: 8px; border: 1px solid #333;">Volume (24h)</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
-  cryptos.forEach(crypto => {
-    tableHTML += `
-      <tr style="text-align: center;">
-        <td style="padding: 8px; border: 1px solid #333;">${crypto.name}</td>
-        <td style="padding: 8px; border: 1px solid #333;">${crypto.symbol}</td>
-        <td style="padding: 8px; border: 1px solid #333;">$${crypto.quote.USD.price.toFixed(2)}</td>
-        <td style="padding: 8px; border: 1px solid #333;">$${formatNumber(crypto.quote.USD.market_cap)}</td>
-        <td style="padding: 8px; border: 1px solid #333;">${crypto.quote.USD.percent_change_24h.toFixed(2)}%</td>
-        <td style="padding: 8px; border: 1px solid #333;">${crypto.quote.USD.percent_change_7d.toFixed(2)}%</td>
-        <td style="padding: 8px; border: 1px solid #333;">${crypto.quote.USD.percent_change_30d.toFixed(2)}%</td>
-        <td style="padding: 8px; border: 1px solid #333;">$${formatNumber(crypto.quote.USD.volume_24h)}</td>
-      </tr>
-    `;
-  });
-  tableHTML += `
-      </tbody>
-    </table>
-  `;
-  document.getElementById("cryptosContent").innerHTML = tableHTML;
-}
-
-// Função auxiliar para formatar números grandes com separadores
-function formatNumber(num) {
-  return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
 
 
 });
