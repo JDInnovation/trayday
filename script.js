@@ -1145,7 +1145,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // Alteração principal: Chama a rota serverless (/api/coinmarketcap) para evitar erros de CORS
   function fetchCryptosData() {
-    fetch("/api/coinmarketcap?limit=20")
+    fetch("/api/coinmarketcap?limit=50")
       .then(response => response.json())
       .then(data => {
         // Verifica se os dados estão no formato esperado
