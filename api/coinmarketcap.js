@@ -2,7 +2,7 @@
 export default async function handler(req, res) {
     try {
       // Você pode receber parâmetros da query string, por exemplo:
-      const limit = req.query.limit || 50;
+      const limit = req.query.limit || 20;
   
       // Faz a requisição à API do CoinMarketCap
       const response = await fetch(

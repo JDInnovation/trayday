@@ -1140,17 +1140,15 @@ document.addEventListener("DOMContentLoaded", function() {
       </div>
       <div id="cryptosContent" style="margin-top: 20px;">Carregando dados...</div>
     `;
-    // Chama a rota local /api/coinmarketcap (serverless function) em vez de chamar a API diretamente
     fetchCryptosData();
   }
 
-  // Aqui está a alteração principal: em vez de chamar "https://pro-api.coinmarketcap.com", chamamos "/api/coinmarketcap"
+  // Alteração principal: Chama a rota serverless (/api/coinmarketcap) para evitar erros de CORS
   function fetchCryptosData() {
-    // Se quiser 20, 25, 50, basta mudar o parâmetro limit
     fetch("/api/coinmarketcap?limit=20")
       .then(response => response.json())
       .then(data => {
-        // Verifica se a resposta está no formato esperado
+        // Verifica se os dados estão no formato esperado
         if (!data || !data.data) {
           document.getElementById("cryptosContent").innerHTML = `<p>Erro ao receber dados da API.</p>`;
           return;
@@ -1162,7 +1160,12 @@ document.addEventListener("DOMContentLoaded", function() {
       });
   }
 
+  // Aqui filtramos para remover as stablecoins (aqueles que possuem a tag "stablecoin")
   function renderCryptosTable(cryptos) {
+    const filteredCryptos = cryptos.filter(coin => {
+      // Se não houver tag ou se houver e não incluir "stablecoin"
+      return !coin.tags || (coin.tags && !coin.tags.includes("stablecoin"));
+    });
     let tableHTML = `
       <table class="cryptos-table">
         <thead>
@@ -1179,7 +1182,7 @@ document.addEventListener("DOMContentLoaded", function() {
         </thead>
         <tbody>
     `;
-    cryptos.forEach(crypto => {
+    filteredCryptos.forEach(crypto => {
       tableHTML += `
         <tr>
           <td>${crypto.name}</td>
