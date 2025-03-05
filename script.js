@@ -1136,7 +1136,7 @@ document.addEventListener("DOMContentLoaded", function() {
   function renderCryptosPage() {
     document.getElementById("mainContent").innerHTML = `
       <div class="cryptos-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2>Top 50 Criptomoedas por Market Cap</h2>
+        <h2>Top 0 Criptomoedas por Market Cap</h2>
       </div>
       <div id="cryptosContent" style="margin-top: 20px;">Carregando dados...</div>
     `;
