@@ -1171,13 +1171,13 @@ document.addEventListener("DOMContentLoaded", function() {
         <thead>
           <tr>
             <th>Nome</th>
-            <th>Ticker</th>
+            
             <th>Preço</th>
-            <th>Market Cap</th>
+            
             <th>24h %</th>
             <th>7d %</th>
             <th>30d %</th>
-            <th>Volume (24h)</th>
+            
           </tr>
         </thead>
         <tbody>
@@ -1186,13 +1186,13 @@ document.addEventListener("DOMContentLoaded", function() {
       tableHTML += `
         <tr>
           <td>${crypto.name}</td>
-          <td>${crypto.symbol}</td>
+          
           <td>$${crypto.quote.USD.price.toFixed(2)}</td>
-          <td>$${formatNumber(crypto.quote.USD.market_cap)}</td>
+          
           <td>${crypto.quote.USD.percent_change_24h.toFixed(2)}%</td>
           <td>${crypto.quote.USD.percent_change_7d.toFixed(2)}%</td>
           <td>${crypto.quote.USD.percent_change_30d.toFixed(2)}%</td>
-          <td>$${formatNumber(crypto.quote.USD.volume_24h)}</td>
+          
         </tr>
       `;
     });
