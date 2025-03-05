@@ -20,21 +20,19 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
 document.addEventListener("DOMContentLoaded", function() {
-  // Variável para o usuário autenticado via Firebase
+  // Global variables for authenticated user and session data
   let currentUser = null;
-  // sessionHistory armazenará as sessões recuperadas do Firestore
   let sessionHistory = [];
-  // Variável para cancelar o listener em tempo real, se necessário
   let unsubscribeSessions = null;
-
-  // Dummy articles para a Home
+  
+  // Dummy articles for the Home page (now called "Articles")
   const dummyArticles = [
     {
       id: 1,
       author: "CryptoGuru",
       title: "Bitcoin Breaks New High",
       date: "April 1, 2025",
-      category: "noticia",
+      category: "news",
       excerpt: "Bitcoin reaches an unprecedented all-time high as global interest surges.",
       thumbnail: "thumb1.jpg",
       content: "In a remarkable turn of events, Bitcoin has reached a new all-time high, attracting investors worldwide."
@@ -44,7 +42,7 @@ document.addEventListener("DOMContentLoaded", function() {
       author: "BlockchainExpert",
       title: "ETH: The Future of Smart Contracts",
       date: "March 28, 2025",
-      category: "análises",
+      category: "analytics",
       excerpt: "Ethereum continues to lead the way in smart contract innovation.",
       thumbnail: "thumb2.jpg",
       content: "Ethereum remains at the forefront of blockchain technology with constant upgrades."
@@ -54,30 +52,30 @@ document.addEventListener("DOMContentLoaded", function() {
       author: "TraderPro",
       title: "Scalping Strategies in Volatile Markets",
       date: "April 3, 2025",
-      category: "informação",
+      category: "information",
       excerpt: "Scalping can be highly profitable if executed with precision.",
       thumbnail: "thumb3.jpg",
       content: "Scalping, a strategy focused on frequent small gains, is gaining traction in volatile markets."
     }
   ];
 
-  // Variáveis para a sessão de scalping
+  // Variables for scalping session
   let sessionStartTime;
   let sessionTimerInterval;
   let sessionData = {
     initialBank: 0,
-    type: "normal", // soft, normal, aggressive
+    type: "normal", // values: soft, normal, aggressive
     trades: [],
     riskPerTrade: 0,
     maxTrades: 0,
     objectivePercent: 0
   };
 
-  // Variáveis para gráficos
+  // Variables for charts
   let performanceChart;
   let resultsChart;
 
-  // Mapeamento de ícones para o menu (incluindo novo item "cryptos")
+  // Icon mapping for the menu (including "cryptos")
   const iconMap = {
     home: '<i class="fas fa-home menu-icon"></i>',
     cryptos: '<i class="fas fa-coins menu-icon"></i>',
@@ -88,14 +86,14 @@ document.addEventListener("DOMContentLoaded", function() {
     login: '<i class="fas fa-sign-in-alt menu-icon"></i>'
   };
 
-  // Atualiza o menu
+  // Update the menu
   function updateMenu() {
     const menuLinks = document.getElementById("menuLinks");
     menuLinks.innerHTML = "";
     let items = [];
     if (currentUser) {
       items = [
-        { hash: "#home", label: "Home", key: "home" },
+        { hash: "#home", label: "Articles", key: "home" },
         { hash: "#cryptos", label: "Cryptos", key: "cryptos" },
         { hash: "#sessao", label: "Scalping", key: "sessao" },
         { hash: "#resultados", label: "Results", key: "resultados" },
@@ -104,7 +102,7 @@ document.addEventListener("DOMContentLoaded", function() {
       ];
     } else {
       items = [
-        { hash: "#home", label: "Home", key: "home" },
+        { hash: "#home", label: "Articles", key: "home" },
         { hash: "#login", label: "Login", key: "login" }
       ];
     }
@@ -130,7 +128,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // Toggle da sidebar
+  // Sidebar toggle
   document.getElementById("sidebarToggle").addEventListener("click", function() {
     if (window.innerWidth > 768) {
       const sidebar = document.getElementById("sidebar");
@@ -140,7 +138,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  // Monitorar o estado de autenticação do Firebase
+  // Firebase auth state listener
   auth.onAuthStateChanged((user) => {
     currentUser = user;
     updateMenu();
@@ -158,7 +156,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  // Roteamento
+  // Routing
   function loadContent() {
     let section = window.location.hash.substring(1);
     if (!section) section = "home";
@@ -187,7 +185,16 @@ document.addEventListener("DOMContentLoaded", function() {
         renderProfile();
         break;
       case "sessao":
-        renderSessionStart();
+        // If a session is active, restore it; otherwise, show the start form
+        const storedSession = localStorage.getItem("activeSessionData");
+        const storedStartTime = localStorage.getItem("sessionStartTime");
+        if (storedSession && storedStartTime) {
+          sessionData = JSON.parse(storedSession);
+          sessionStartTime = new Date(storedStartTime);
+          renderSessionDashboard();
+        } else {
+          renderSessionStart();
+        }
         break;
       case "resultados":
         renderResultsPage();
@@ -210,7 +217,7 @@ document.addEventListener("DOMContentLoaded", function() {
   updateMenu();
   loadContent();
 
-  // --- FUNÇÕES DE AUTENTICAÇÃO ---
+  // --- AUTHENTICATION FUNCTIONS ---
   function renderLogin() {
     const loginHTML = `
       <h2>Login</h2>
@@ -222,8 +229,8 @@ document.addEventListener("DOMContentLoaded", function() {
         <button id="loginBtn">Login</button>
       </div>
       <p>
-        <a href="#signup">Criar Conta</a> | 
-        <a href="#recover">Recuperar Senha</a>
+        <a href="#signup">Create Account</a> | 
+        <a href="#recover">Recover Password</a>
       </p>
     `;
     document.getElementById("mainContent").innerHTML = loginHTML;
@@ -234,7 +241,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
     if (email === "" || password === "") {
-      alert("Por favor, preencha todos os campos.");
+      alert("Please fill in all fields.");
       return;
     }
     signInWithEmailAndPassword(auth, email, password)
@@ -244,22 +251,22 @@ document.addEventListener("DOMContentLoaded", function() {
         window.location.hash = "home";
       })
       .catch((error) => {
-        alert("Erro ao fazer login: " + error.message);
+        alert("Error logging in: " + error.message);
       });
   }
 
   function renderSignUp() {
     const signUpHTML = `
-      <h2>Criar Conta</h2>
+      <h2>Create Account</h2>
       <div class="session-form">
         <label for="email">Email:</label>
         <input type="email" id="email" placeholder="Enter your email" />
         <label for="password">Password:</label>
         <input type="password" id="password" placeholder="Enter your password" />
-        <button id="signupBtn">Criar Conta</button>
+        <button id="signupBtn">Create Account</button>
       </div>
       <p>
-        <a href="#login">Já tem conta? Login</a>
+        <a href="#login">Already have an account? Login</a>
       </p>
     `;
     document.getElementById("mainContent").innerHTML = signUpHTML;
@@ -270,7 +277,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
     if (email === "" || password === "") {
-      alert("Por favor, preencha todos os campos.");
+      alert("Please fill in all fields.");
       return;
     }
     createUserWithEmailAndPassword(auth, email, password)
@@ -280,20 +287,20 @@ document.addEventListener("DOMContentLoaded", function() {
         window.location.hash = "home";
       })
       .catch((error) => {
-        alert("Erro ao criar conta: " + error.message);
+        alert("Error creating account: " + error.message);
       });
   }
 
   function renderRecover() {
     const recoverHTML = `
-      <h2>Recuperar Senha</h2>
+      <h2>Recover Password</h2>
       <div class="session-form">
         <label for="email">Email:</label>
         <input type="email" id="email" placeholder="Enter your email" />
-        <button id="recoverBtn">Enviar Recuperação</button>
+        <button id="recoverBtn">Send Recovery Email</button>
       </div>
       <p>
-        <a href="#login">Voltar para Login</a>
+        <a href="#login">Back to Login</a>
       </p>
     `;
     document.getElementById("mainContent").innerHTML = recoverHTML;
@@ -303,15 +310,15 @@ document.addEventListener("DOMContentLoaded", function() {
   function recoverPassword() {
     const email = document.getElementById("email").value.trim();
     if (email === "") {
-      alert("Por favor, insira seu email.");
+      alert("Please enter your email.");
       return;
     }
     sendPasswordResetEmail(auth, email)
       .then(() => {
-        alert("Email de recuperação enviado!");
+        alert("Recovery email sent!");
       })
       .catch((error) => {
-        alert("Erro ao enviar email de recuperação: " + error.message);
+        alert("Error sending recovery email: " + error.message);
       });
   }
 
@@ -324,18 +331,18 @@ document.addEventListener("DOMContentLoaded", function() {
         window.location.hash = "login";
       })
       .catch((error) => {
-        alert("Erro ao fazer logout: " + error.message);
+        alert("Error logging out: " + error.message);
       });
   }
 
-  // --- HOME SECTION ---
+  // --- HOME SECTION (renamed to "Articles") ---
   function renderHome() {
     const tabsHTML = `
       <div class="article-tabs">
         <span class="article-tab active" data-category="all">All</span>
-        <span class="article-tab" data-category="noticia">News</span>
-        <span class="article-tab" data-category="análises">Analytics</span>
-        <span class="article-tab" data-category="informação">Info</span>
+        <span class="article-tab" data-category="news">News</span>
+        <span class="article-tab" data-category="analytics">Analytics</span>
+        <span class="article-tab" data-category="information">Information</span>
       </div>
     `;
     document.getElementById("mainContent").innerHTML = tabsHTML + `<div id="articlesGrid"></div>`;
@@ -398,15 +405,15 @@ document.addEventListener("DOMContentLoaded", function() {
       <h2>My Profile</h2>
       <p><strong>Email:</strong> ${currentUser.email}</p>
       <p>Manage your information, view your posts, and track your activity.</p>
-      <button id="clearHistoryBtn">Limpar Histórico</button>
+      <button id="clearHistoryBtn">Clear History</button>
     `;
     document.getElementById("mainContent").innerHTML = profileHTML;
     document.getElementById("clearHistoryBtn").addEventListener("click", clearHistory);
   }
 
-  // Função para limpar o histórico (deletar todos os documentos de "sessions" deste usuário)
+  // Clear history function
   async function clearHistory() {
-    if (!confirm("Tem certeza que deseja limpar todo o histórico de sessões?")) return;
+    if (!confirm("Are you sure you want to clear all session history?")) return;
     try {
       const sessionsRef = collection(db, "sessions");
       const q = query(sessionsRef, where("uid", "==", currentUser.uid));
@@ -416,14 +423,14 @@ document.addEventListener("DOMContentLoaded", function() {
         promises.push(deleteDoc(doc(db, "sessions", docSnap.id)));
       });
       await Promise.all(promises);
-      alert("Histórico limpo com sucesso.");
+      alert("History cleared successfully.");
       sessionHistory = [];
       if (window.location.hash === "#resultados") {
         renderResultsPage();
       }
     } catch (error) {
-      console.error("Erro ao limpar histórico: ", error);
-      alert("Erro ao limpar histórico: " + error.message);
+      console.error("Error clearing history: ", error);
+      alert("Error clearing history: " + error.message);
     }
   }
 
@@ -445,7 +452,7 @@ document.addEventListener("DOMContentLoaded", function() {
         </div>
         <div class="session-info">
           <h3>Session Guidelines</h3>
-          <p>The objective is to capture small gains with controlled risk.</p>
+          <p>The objective is to capture small gains with controlled risk. Your session will remain active until you end it manually or log out.</p>
         </div>
       </div>
     `;
@@ -477,17 +484,22 @@ document.addEventListener("DOMContentLoaded", function() {
       sessionData.objectivePercent = 10;
     }
     sessionStartTime = new Date();
+    // Persist session data in localStorage so that it persists across page changes
+    localStorage.setItem("activeSessionData", JSON.stringify(sessionData));
+    localStorage.setItem("sessionStartTime", sessionStartTime.toISOString());
     sessionTimerInterval = setInterval(updateTimer, 1000);
     renderSessionDashboard();
   }
 
   function updateTimer() {
+    const timerElem = document.getElementById("session-timer");
+    if (!timerElem) return;
     const now = new Date();
     const elapsed = new Date(now - sessionStartTime);
     const h = String(elapsed.getUTCHours()).padStart(2, "0");
     const m = String(elapsed.getUTCMinutes()).padStart(2, "0");
     const s = String(elapsed.getUTCSeconds()).padStart(2, "0");
-    document.getElementById("session-timer").textContent = `${h}:${m}:${s}`;
+    timerElem.textContent = `${h}:${m}:${s}`;
   }
 
   function renderSessionDashboard() {
@@ -627,6 +639,8 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("progressFill").style.width = progress + "%";
     document.getElementById("progressText").textContent = `Progress: ${progress.toFixed(2)}%`;
     updateChart();
+    // Update localStorage with the latest session data
+    localStorage.setItem("activeSessionData", JSON.stringify(sessionData));
   }
 
   function removeTrade(index) {
@@ -665,7 +679,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // --- TERMINAR SESSÃO E ARMAZENAR NO FIRESTORE ---
+  // --- TERMINATE SESSION AND STORE IN FIRESTORE ---
   async function terminateSession() {
     if (!confirm("Are you sure you want to end the session?")) return;
     clearInterval(sessionTimerInterval);
@@ -689,6 +703,9 @@ document.addEventListener("DOMContentLoaded", function() {
     };
     sessionHistory.push(sessionSummary);
     await storeSessionData(sessionSummary);
+    // Clear session data from localStorage so that a new session can be started later
+    localStorage.removeItem("activeSessionData");
+    localStorage.removeItem("sessionStartTime");
     const summaryHTML = `
       <h2>Session Summary</h2>
       <div class="session-summary">
@@ -724,187 +741,13 @@ document.addEventListener("DOMContentLoaded", function() {
         type: sessionSummary.type,
         timestamp: new Date()
       });
-      console.log("Dados da sessão armazenados com sucesso.");
+      console.log("Session data stored successfully.");
     } catch (error) {
-      console.error("Erro ao armazenar sessão: ", error);
+      console.error("Error storing session data: ", error);
     }
   }
 
-  // --- CALCULATORS SECTION ---
-  function renderCalculatorsPage() {
-    const calculatorsHTML = `
-      <h2>Calculators</h2>
-      <div class="calc-tabs">
-        <span class="calc-tab active" data-target="riskCalc">Risk</span>
-        <span class="calc-tab" data-target="compoundCalc">Compound</span>
-        <span class="calc-tab" data-target="predictionCalc">Prediction</span>
-        <span class="calc-tab" data-target="stopLossCalc">Stop Loss</span>
-        <span class="calc-tab" data-target="priceCalc">Preço Médio</span>
-      </div>
-      <div class="calc-content">
-        <div id="riskCalc" class="calc-item active">
-          <div class="calculators-section">
-            <h3>Risk Calculator</h3>
-            <label for="riskInitialBank">Initial Bank ($):</label>
-            <input type="number" id="riskInitialBank" placeholder="Enter your bank" />
-            <label for="riskPercentage">Risk Percentage (%):</label>
-            <input type="number" id="riskPercentage" placeholder="Enter risk percentage" />
-            <button id="calcRiskBtn">Calculate Risk</button>
-            <p id="riskResult"></p>
-          </div>
-        </div>
-        <div id="compoundCalc" class="calc-item">
-          <div class="calculators-section">
-            <h3>Compound Interest Calculator</h3>
-            <label for="compoundPrincipal">Principal ($):</label>
-            <input type="number" id="compoundPrincipal" placeholder="Enter principal" />
-            <label for="compoundRate">Interest Rate (%):</label>
-            <input type="number" id="compoundRate" placeholder="Enter rate" />
-            <label for="compoundBasis">Calculation Basis:</label>
-            <select id="compoundBasis">
-              <option value="sessions">Sessions</option>
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
-            </select>
-            <label for="compoundPeriods">Number of Periods:</label>
-            <input type="number" id="compoundPeriods" placeholder="e.g., 10" />
-            <button id="calcCompoundBtn">Calculate</button>
-            <p id="compoundResult"></p>
-          </div>
-        </div>
-        <div id="predictionCalc" class="calc-item">
-          <div class="calculators-section">
-            <h3>Session Prediction Calculator</h3>
-            <label for="predInitialBank">Initial Bank ($):</label>
-            <input type="number" id="predInitialBank" placeholder="Enter your bank" />
-            <label for="predTradeCount">Number of Trades:</label>
-            <input type="number" id="predTradeCount" placeholder="Enter number of trades" />
-            <label for="predAvgProfit">Average Profit/Loss per Trade ($):</label>
-            <input type="number" id="predAvgProfit" placeholder="Enter average profit/loss" />
-            <button id="calcPredictionBtn">Predict Final Bank</button>
-            <p id="predictionResult"></p>
-          </div>
-        </div>
-        <div id="stopLossCalc" class="calc-item">
-          <div class="calculators-section">
-            <h3>Stop Loss Calculator</h3>
-            <label for="stopInitialBank">Initial Bank ($):</label>
-            <input type="number" id="stopInitialBank" placeholder="Enter your bank" />
-            <label for="stopRiskPercentage">Risk Percentage per Trade (%):</label>
-            <input type="number" id="stopRiskPercentage" placeholder="Enter risk percentage" />
-            <label for="entryPrice">Entry Price ($):</label>
-            <input type="number" id="entryPrice" placeholder="Enter entry price" />
-            <button id="calcStopLossBtn">Calculate Stop Loss</button>
-            <p id="stopLossResult"></p>
-          </div>
-        </div>
-        <div id="priceCalc" class="calc-item">
-          <div class="calculators-section">
-            <h3>Calculadora de Preço Médio</h3>
-            <label for="currentQuantity">Quantidade Atual:</label>
-            <input type="number" id="currentQuantity" placeholder="Ex: 100" />
-            <label for="currentPrice">Preço Atual:</label>
-            <input type="number" id="currentPrice" placeholder="Ex: 10.00" step="0.01" />
-            <label for="buyQuantity">Quantidade a Comprar:</label>
-            <input type="number" id="buyQuantity" placeholder="Ex: 50" />
-            <label for="buyPrice">Preço de Compra:</label>
-            <input type="number" id="buyPrice" placeholder="Ex: 12.00" step="0.01" />
-            <button id="calcAveragePriceBtn">Calcular Preço Médio</button>
-            <p id="averagePriceResult"></p>
-          </div>
-        </div>
-      </div>
-    `;
-    document.getElementById("mainContent").innerHTML = calculatorsHTML;
-    document.querySelectorAll(".calc-tab").forEach(tab => {
-      tab.addEventListener("click", function() {
-        document.querySelectorAll(".calc-tab").forEach(t => t.classList.remove("active"));
-        this.classList.add("active");
-        const target = this.getAttribute("data-target");
-        document.querySelectorAll(".calc-item").forEach(item => item.classList.remove("active"));
-        document.getElementById(target).classList.add("active");
-      });
-    });
-    document.getElementById("calcRiskBtn").addEventListener("click", calcRisk);
-    document.getElementById("calcCompoundBtn").addEventListener("click", calcCompound);
-    document.getElementById("calcPredictionBtn").addEventListener("click", calcPrediction);
-    document.getElementById("calcStopLossBtn").addEventListener("click", calcStopLoss);
-    document.getElementById("calcAveragePriceBtn").addEventListener("click", calcAveragePrice);
-  }
-
-  // --- FUNÇÕES DAS CALCULADORAS ---
-  function calcRisk() {
-    const bank = parseFloat(document.getElementById("riskInitialBank").value);
-    const riskPct = parseFloat(document.getElementById("riskPercentage").value);
-    if (isNaN(bank) || isNaN(riskPct)) {
-      alert("Please enter valid values.");
-      return;
-    }
-    const riskValue = (riskPct / 100) * bank;
-    document.getElementById("riskResult").textContent = `Risk per trade: $${riskValue.toFixed(2)}`;
-  }
-
-  function calcCompound() {
-    const principal = parseFloat(document.getElementById("compoundPrincipal").value);
-    const rate = parseFloat(document.getElementById("compoundRate").value);
-    const basis = document.getElementById("compoundBasis").value;
-    const periods = parseInt(document.getElementById("compoundPeriods").value);
-    if (isNaN(principal) || isNaN(rate) || isNaN(periods)) {
-      alert("Please enter valid values.");
-      return;
-    }
-    let futureValue;
-    if (basis === "sessions") {
-      futureValue = principal * Math.pow(1 + rate / 100, periods);
-    } else if (basis === "monthly") {
-      futureValue = principal * Math.pow(1 + (rate / 100) / 12, periods);
-    } else if (basis === "yearly") {
-      futureValue = principal * Math.pow(1 + rate / 100, periods);
-    }
-    document.getElementById("compoundResult").textContent = `Future Value: $${futureValue.toFixed(2)}`;
-  }
-
-  function calcPrediction() {
-    const bank = parseFloat(document.getElementById("predInitialBank").value);
-    const tradeCount = parseInt(document.getElementById("predTradeCount").value);
-    const avgProfit = parseFloat(document.getElementById("predAvgProfit").value);
-    if (isNaN(bank) || isNaN(tradeCount) || isNaN(avgProfit)) {
-      alert("Please enter valid values.");
-      return;
-    }
-    const finalBank = bank + (tradeCount * avgProfit);
-    document.getElementById("predictionResult").textContent = `Predicted Final Bank: $${finalBank.toFixed(2)}`;
-  }
-
-  function calcStopLoss() {
-    const bank = parseFloat(document.getElementById("stopInitialBank").value);
-    const riskPct = parseFloat(document.getElementById("stopRiskPercentage").value);
-    const entryPrice = parseFloat(document.getElementById("entryPrice").value);
-    if (isNaN(bank) || isNaN(riskPct) || isNaN(entryPrice)) {
-      alert("Please enter valid values.");
-      return;
-    }
-    const riskAmount = (riskPct / 100) * bank;
-    const stopLossPrice = entryPrice - riskAmount;
-    document.getElementById("stopLossResult").textContent = `Suggested Stop Loss Price: $${stopLossPrice.toFixed(2)}`;
-  }
-
-  function calcAveragePrice() {
-    const currentQty = parseFloat(document.getElementById("currentQuantity").value);
-    const currentPrice = parseFloat(document.getElementById("currentPrice").value);
-    const buyQty = parseFloat(document.getElementById("buyQuantity").value);
-    const buyPrice = parseFloat(document.getElementById("buyPrice").value);
-    if (isNaN(currentQty) || isNaN(currentPrice) || isNaN(buyQty) || isNaN(buyPrice)) {
-      alert("Por favor, preencha todos os campos com valores válidos.");
-      return;
-    }
-    const totalQty = currentQty + buyQty;
-    const newTotalValue = (currentQty * currentPrice) + (buyQty * buyPrice);
-    const averagePrice = newTotalValue / totalQty;
-    document.getElementById("averagePriceResult").textContent = `Preço Médio: $${averagePrice.toFixed(2)}`;
-  }
-
-  // --- LISTENER EM TEMPO REAL PARA AS SESSÕES ---
+  // --- REAL-TIME LISTENER FOR SESSIONS ---
   function startSessionsListener() {
     if (!currentUser) return;
     const sessionsRef = collection(db, "sessions");
@@ -918,16 +761,16 @@ document.addEventListener("DOMContentLoaded", function() {
         sessions.push({ id: doc.id, ...doc.data() });
       });
       sessionHistory = sessions;
-      console.log("Sessões em tempo real:", sessionHistory);
+      console.log("Real-time sessions:", sessionHistory);
       if (window.location.hash === "#resultados") {
         renderResultsPage();
       }
     }, (error) => {
-      console.error("Erro no onSnapshot:", error);
+      console.error("Error in onSnapshot:", error);
     });
   }
 
-  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS COM FILTRO ---
+  // --- RESULTS PAGE WITH FILTER ---
   async function renderResultsPage() {
     let filterValue = "all";
     if (document.getElementById("filterSelect")) {
@@ -949,15 +792,15 @@ document.addEventListener("DOMContentLoaded", function() {
         <h2>Session Results</h2>
         <div class="results-filter">
           <select id="filterSelect">
-            <option value="all" ${filterValue==="all" ? "selected" : ""}>Todas as sessões</option>
-            <option value="month" ${filterValue==="month" ? "selected" : ""}>Início do mês até agora</option>
-            <option value="year" ${filterValue==="year" ? "selected" : ""}>Início do ano até agora</option>
-            <option value="week" ${filterValue==="week" ? "selected" : ""}>Início da semana até agora</option>
-            <option value="last10" ${filterValue==="last10" ? "selected" : ""}>Últimas 10 sessões</option>
-            <option value="last25" ${filterValue==="last25" ? "selected" : ""}>Últimas 25 sessões</option>
-            <option value="last50" ${filterValue==="last50" ? "selected" : ""}>Últimas 50 sessões</option>
-            <option value="last100" ${filterValue==="last100" ? "selected" : ""}>Últimas 100 sessões</option>
-            <option value="last3months" ${filterValue==="last3months" ? "selected" : ""}>Últimos 3 meses</option>
+            <option value="all" ${filterValue==="all" ? "selected" : ""}>All Sessions</option>
+            <option value="month" ${filterValue==="month" ? "selected" : ""}>Since Start of Month</option>
+            <option value="year" ${filterValue==="year" ? "selected" : ""}>Since Start of Year</option>
+            <option value="week" ${filterValue==="week" ? "selected" : ""}>Since Start of Week</option>
+            <option value="last10" ${filterValue==="last10" ? "selected" : ""}>Last 10 Sessions</option>
+            <option value="last25" ${filterValue==="last25" ? "selected" : ""}>Last 25 Sessions</option>
+            <option value="last50" ${filterValue==="last50" ? "selected" : ""}>Last 50 Sessions</option>
+            <option value="last100" ${filterValue==="last100" ? "selected" : ""}>Last 100 Sessions</option>
+            <option value="last3months" ${filterValue==="last3months" ? "selected" : ""}>Last 3 Months</option>
           </select>
         </div>
       </div>
@@ -1132,47 +975,45 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // --- NOVA PÁGINA: CRYPTOS ---
+  // --- CRYPTOS PAGE (using serverless function) ---
   function renderCryptosPage() {
     document.getElementById("mainContent").innerHTML = `
       <div class="cryptos-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2>Top 20 Criptomoedas por Market Cap</h2>
+        <h2>Top 20 Cryptocurrencies by Market Cap</h2>
       </div>
-      <div id="cryptosContent" style="margin-top: 20px;">Carregando dados...</div>
+      <div id="cryptosContent" style="margin-top: 20px;">Loading data...</div>
     `;
     fetchCryptosData();
   }
 
-  // Alteração principal: Chama a rota serverless (/api/coinmarketcap) para evitar erros de CORS
+  // Calls the local API endpoint to avoid CORS issues
   function fetchCryptosData() {
-    fetch("/api/coinmarketcap?limit=50")
+    fetch("/api/coinmarketcap?limit=20")
       .then(response => response.json())
       .then(data => {
-        // Verifica se os dados estão no formato esperado
         if (!data || !data.data) {
-          document.getElementById("cryptosContent").innerHTML = `<p>Erro ao receber dados da API.</p>`;
+          document.getElementById("cryptosContent").innerHTML = `<p>Error receiving API data.</p>`;
           return;
         }
         renderCryptosTable(data.data);
       })
       .catch(err => {
-        document.getElementById("cryptosContent").innerHTML = `<p>Erro ao carregar dados: ${err.message}</p>`;
+        document.getElementById("cryptosContent").innerHTML = `<p>Error loading data: ${err.message}</p>`;
       });
   }
 
-  // Aqui filtramos para remover as stablecoins (aqueles que possuem a tag "stablecoin")
+  // Filter out stablecoins (coins with the "stablecoin" tag)
   function renderCryptosTable(cryptos) {
     const filteredCryptos = cryptos.filter(coin => {
-      // Se não houver tag ou se houver e não incluir "stablecoin"
       return !coin.tags || (coin.tags && !coin.tags.includes("stablecoin"));
     });
     let tableHTML = `
       <table class="cryptos-table">
         <thead>
           <tr>
-            <th>Nome</th>
+            <th>Name</th>
             <th>Ticker</th>
-            <th>Preço</th>
+            <th>Price</th>
             <th>Market Cap</th>
             <th>24h %</th>
             <th>7d %</th>
@@ -1203,7 +1044,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("cryptosContent").innerHTML = tableHTML;
   }
 
-  // Função auxiliar para formatar números grandes
+  // Helper function to format large numbers
   function formatNumber(num) {
     return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }
