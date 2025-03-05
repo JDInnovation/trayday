@@ -213,22 +213,27 @@ document.addEventListener("DOMContentLoaded", function() {
   // --- FUNÇÕES DE AUTENTICAÇÃO ---
   function renderLogin() {
     const loginHTML = `
-      <h2>Login</h2>
-      <div class="login-form">
-        <label for="email">Email:</label>
-        <input type="email" id="email" placeholder="Enter your email" />
-        <label for="password">Password:</label>
-        <input type="password" id="password" placeholder="Enter your password" />
-        <button id="loginBtn">Login</button>
+      <div class="auth-container">
+        <div class="auth-card">
+          <h2>Login</h2>
+          <form class="auth-form">
+            <label for="email">Email:</label>
+            <input type="email" id="email" placeholder="Digite seu email" required />
+            <label for="password">Senha:</label>
+            <input type="password" id="password" placeholder="Digite sua senha" required />
+            <button type="button" id="loginBtn" class="primary-btn">Login</button>
+          </form>
+          <div class="auth-actions">
+            <button type="button" onclick="window.location.hash='#signup'" class="secondary-btn">Criar Conta</button>
+            <button type="button" onclick="window.location.hash='#recover'" class="secondary-btn">Recuperar Senha</button>
+          </div>
+        </div>
       </div>
-      <p>
-        <a href="#signup">Criar Conta</a> | 
-        <a href="#recover">Recuperar Senha</a>
-      </p>
     `;
     document.getElementById("mainContent").innerHTML = loginHTML;
     document.getElementById("loginBtn").addEventListener("click", doLogin);
   }
+  
 
   function doLogin() {
     const email = document.getElementById("email").value.trim();
@@ -250,22 +255,26 @@ document.addEventListener("DOMContentLoaded", function() {
 
   function renderSignUp() {
     const signUpHTML = `
-      <h2>Criar Conta</h2>
-      <div class="session-form">
-        <label for="email">Email:</label>
-        <input type="email" id="email" placeholder="Enter your email" />
-        <label for="password">Password:</label>
-        <input type="password" id="password" placeholder="Enter your password" />
-        <button id="signupBtn">Criar Conta</button>
+      <div class="auth-container">
+        <div class="auth-card">
+          <h2>Criar Conta</h2>
+          <form class="auth-form">
+            <label for="email">Email:</label>
+            <input type="email" id="email" placeholder="Digite seu email" required />
+            <label for="password">Senha:</label>
+            <input type="password" id="password" placeholder="Digite sua senha" required />
+            <button type="button" id="signupBtn" class="primary-btn">Criar Conta</button>
+          </form>
+          <div class="auth-actions">
+            <button type="button" onclick="window.location.hash='#login'" class="secondary-btn">Já tenho conta, Login</button>
+          </div>
+        </div>
       </div>
-      <p>
-        <a href="#login">Já tem conta? Login</a>
-      </p>
     `;
     document.getElementById("mainContent").innerHTML = signUpHTML;
     document.getElementById("signupBtn").addEventListener("click", doSignUp);
   }
-
+  
   function doSignUp() {
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
@@ -286,19 +295,24 @@ document.addEventListener("DOMContentLoaded", function() {
 
   function renderRecover() {
     const recoverHTML = `
-      <h2>Recuperar Senha</h2>
-      <div class="session-form">
-        <label for="email">Email:</label>
-        <input type="email" id="email" placeholder="Enter your email" />
-        <button id="recoverBtn">Enviar Recuperação</button>
+      <div class="auth-container">
+        <div class="auth-card">
+          <h2>Recuperar Senha</h2>
+          <form class="auth-form">
+            <label for="email">Email:</label>
+            <input type="email" id="email" placeholder="Digite seu email" required />
+            <button type="button" id="recoverBtn" class="primary-btn">Enviar Recuperação</button>
+          </form>
+          <div class="auth-actions">
+            <button type="button" onclick="window.location.hash='#login'" class="secondary-btn">Voltar para Login</button>
+          </div>
+        </div>
       </div>
-      <p>
-        <a href="#login">Voltar para Login</a>
-      </p>
     `;
     document.getElementById("mainContent").innerHTML = recoverHTML;
     document.getElementById("recoverBtn").addEventListener("click", recoverPassword);
   }
+  
 
   function recoverPassword() {
     const email = document.getElementById("email").value.trim();
