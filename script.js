@@ -20,12 +20,12 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
 document.addEventListener("DOMContentLoaded", function() {
-  // Global variables for authenticated user and session data
+  // Global variables
   let currentUser = null;
   let sessionHistory = [];
   let unsubscribeSessions = null;
-  
-  // Dummy articles for the Home page (now called "Articles")
+
+  // Dummy articles for the Home page (renamed to "Articles")
   const dummyArticles = [
     {
       id: 1,
@@ -86,7 +86,9 @@ document.addEventListener("DOMContentLoaded", function() {
     login: '<i class="fas fa-sign-in-alt menu-icon"></i>'
   };
 
-  // Update the menu
+  // ---------------------------
+  // MENU & ROUTING FUNCTIONS
+  // ---------------------------
   function updateMenu() {
     const menuLinks = document.getElementById("menuLinks");
     menuLinks.innerHTML = "";
@@ -156,7 +158,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  // Routing
   function loadContent() {
     let section = window.location.hash.substring(1);
     if (!section) section = "home";
@@ -185,7 +186,7 @@ document.addEventListener("DOMContentLoaded", function() {
         renderProfile();
         break;
       case "sessao":
-        // If a session is active, restore it; otherwise, show the start form
+        // Restore active scalping session from localStorage if exists
         const storedSession = localStorage.getItem("activeSessionData");
         const storedStartTime = localStorage.getItem("sessionStartTime");
         if (storedSession && storedStartTime) {
@@ -217,7 +218,9 @@ document.addEventListener("DOMContentLoaded", function() {
   updateMenu();
   loadContent();
 
-  // --- AUTHENTICATION FUNCTIONS ---
+  // ---------------------------
+  // AUTHENTICATION FUNCTIONS
+  // ---------------------------
   function renderLogin() {
     const loginHTML = `
       <h2>Login</h2>
@@ -226,7 +229,7 @@ document.addEventListener("DOMContentLoaded", function() {
         <input type="email" id="email" placeholder="Enter your email" />
         <label for="password">Password:</label>
         <input type="password" id="password" placeholder="Enter your password" />
-        <button id="loginBtn">Login</button>
+        <button id="loginBtn" class="btn">Login</button>
       </div>
       <p>
         <a href="#signup">Create Account</a> | 
@@ -263,7 +266,7 @@ document.addEventListener("DOMContentLoaded", function() {
         <input type="email" id="email" placeholder="Enter your email" />
         <label for="password">Password:</label>
         <input type="password" id="password" placeholder="Enter your password" />
-        <button id="signupBtn">Create Account</button>
+        <button id="signupBtn" class="btn">Create Account</button>
       </div>
       <p>
         <a href="#login">Already have an account? Login</a>
@@ -297,7 +300,7 @@ document.addEventListener("DOMContentLoaded", function() {
       <div class="session-form">
         <label for="email">Email:</label>
         <input type="email" id="email" placeholder="Enter your email" />
-        <button id="recoverBtn">Send Recovery Email</button>
+        <button id="recoverBtn" class="btn">Send Recovery Email</button>
       </div>
       <p>
         <a href="#login">Back to Login</a>
@@ -335,7 +338,9 @@ document.addEventListener("DOMContentLoaded", function() {
       });
   }
 
-  // --- HOME SECTION (renamed to "Articles") ---
+  // ---------------------------
+  // HOME / ARTICLES PAGE
+  // ---------------------------
   function renderHome() {
     const tabsHTML = `
       <div class="article-tabs">
@@ -377,7 +382,9 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("articlesGrid").innerHTML = articlesHTML;
   }
 
-  // --- ARTICLE PAGE ---
+  // ---------------------------
+  // ARTICLE PAGE
+  // ---------------------------
   function renderArticlePage(articleId) {
     const id = parseInt(articleId);
     const article = dummyArticles.find(a => a.id === id);
@@ -398,20 +405,21 @@ document.addEventListener("DOMContentLoaded", function() {
     `;
     document.getElementById("mainContent").innerHTML = articleHTML;
   }
-  
-  // --- PROFILE SECTION ---
+
+  // ---------------------------
+  // PROFILE PAGE
+  // ---------------------------
   function renderProfile() {
     const profileHTML = `
       <h2>My Profile</h2>
       <p><strong>Email:</strong> ${currentUser.email}</p>
       <p>Manage your information, view your posts, and track your activity.</p>
-      <button id="clearHistoryBtn">Clear History</button>
+      <button id="clearHistoryBtn" class="btn">Clear History</button>
     `;
     document.getElementById("mainContent").innerHTML = profileHTML;
     document.getElementById("clearHistoryBtn").addEventListener("click", clearHistory);
   }
 
-  // Clear history function
   async function clearHistory() {
     if (!confirm("Are you sure you want to clear all session history?")) return;
     try {
@@ -434,7 +442,9 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // --- SCALPING SESSION ---
+  // ---------------------------
+  // SCALPING SESSION
+  // ---------------------------
   function renderSessionStart() {
     const sessionStartHTML = `
       <div class="neon-box">
@@ -448,11 +458,11 @@ document.addEventListener("DOMContentLoaded", function() {
             <option value="normal">Normal</option>
             <option value="aggressive">Aggressive</option>
           </select>
-          <button id="startSessionBtn">Start Session</button>
+          <button id="startSessionBtn" class="btn">Start Session</button>
         </div>
         <div class="session-info">
           <h3>Session Guidelines</h3>
-          <p>The objective is to capture small gains with controlled risk. Your session will remain active until you end it manually or log out.</p>
+          <p>The objective is to capture small gains with controlled risk. Your session remains active until you manually end it or log out.</p>
         </div>
       </div>
     `;
@@ -484,7 +494,7 @@ document.addEventListener("DOMContentLoaded", function() {
       sessionData.objectivePercent = 10;
     }
     sessionStartTime = new Date();
-    // Persist session data in localStorage so that it persists across page changes
+    // Persist session data so it survives page changes
     localStorage.setItem("activeSessionData", JSON.stringify(sessionData));
     localStorage.setItem("sessionStartTime", sessionStartTime.toISOString());
     sessionTimerInterval = setInterval(updateTimer, 1000);
@@ -543,7 +553,7 @@ document.addEventListener("DOMContentLoaded", function() {
             <h3>Enter Trade</h3>
             <label for="tradeValue">Trade Value ($):</label>
             <input type="number" id="tradeValue" placeholder="e.g., 50 or -30" />
-            <button id="addTradeBtn">Add Trade</button>
+            <button id="addTradeBtn" class="btn">Add Trade</button>
           </div>
           <div class="dashboard-column">
             <h3>Performance Chart</h3>
@@ -571,7 +581,7 @@ document.addEventListener("DOMContentLoaded", function() {
         </div>
         <div class="dashboard-row">
           <div class="dashboard-column full-width">
-            <button id="endSessionBtn" style="background-color: var(--error-color);">
+            <button id="endSessionBtn" class="btn btn-danger">
               End Session
             </button>
           </div>
@@ -639,7 +649,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("progressFill").style.width = progress + "%";
     document.getElementById("progressText").textContent = `Progress: ${progress.toFixed(2)}%`;
     updateChart();
-    // Update localStorage with the latest session data
+    // Update localStorage to persist session data across pages
     localStorage.setItem("activeSessionData", JSON.stringify(sessionData));
   }
 
@@ -679,7 +689,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // --- TERMINATE SESSION AND STORE IN FIRESTORE ---
   async function terminateSession() {
     if (!confirm("Are you sure you want to end the session?")) return;
     clearInterval(sessionTimerInterval);
@@ -703,7 +712,7 @@ document.addEventListener("DOMContentLoaded", function() {
     };
     sessionHistory.push(sessionSummary);
     await storeSessionData(sessionSummary);
-    // Clear session data from localStorage so that a new session can be started later
+    // Clear session data from localStorage as session ended
     localStorage.removeItem("activeSessionData");
     localStorage.removeItem("sessionStartTime");
     const summaryHTML = `
@@ -717,8 +726,8 @@ document.addEventListener("DOMContentLoaded", function() {
         <p><strong>Total Gain/Loss:</strong> $${sessionSummary.totalGainLoss.toFixed(2)}</p>
         <p><strong>Accuracy:</strong> ${sessionSummary.accuracy}%</p>
       </div>
-      <button id="backSessionBtn">Back</button>
-      <button id="exportSessionBtn">Export Results</button>
+      <button id="backSessionBtn" class="btn">Back</button>
+      <button id="exportSessionBtn" class="btn">Export Results</button>
     `;
     document.getElementById("mainContent").innerHTML = summaryHTML;
     document.getElementById("backSessionBtn").addEventListener("click", () => {
@@ -747,7 +756,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // --- REAL-TIME LISTENER FOR SESSIONS ---
   function startSessionsListener() {
     if (!currentUser) return;
     const sessionsRef = collection(db, "sessions");
@@ -770,7 +778,9 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // --- RESULTS PAGE WITH FILTER ---
+  // ---------------------------
+  // RESULTS PAGE WITH FILTER
+  // ---------------------------
   async function renderResultsPage() {
     let filterValue = "all";
     if (document.getElementById("filterSelect")) {
@@ -865,7 +875,7 @@ document.addEventListener("DOMContentLoaded", function() {
     initResultsBarChart(filteredSessions);
     initResultsPieChart(filteredSessions);
   }
-  
+
   function applyFilter(sessions, filterValue) {
     const now = new Date();
     let filtered = sessions;
@@ -926,7 +936,7 @@ document.addEventListener("DOMContentLoaded", function() {
       tbody.appendChild(row);
     });
   }
-  
+
   function initResultsBarChart(sessions) {
     const ctx = document.getElementById("resultsBarChart").getContext("2d");
     resultsChart = new Chart(ctx, {
@@ -949,7 +959,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
   }
-  
+
   function initResultsPieChart(sessions) {
     const profitCount = sessions.filter(s => s.totalGainLoss > 0).length;
     const lossCount = sessions.filter(s => s.totalGainLoss <= 0).length;
@@ -975,7 +985,9 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // --- CRYPTOS PAGE (using serverless function) ---
+  // ---------------------------
+  // CRYPTOS PAGE (using serverless function)
+  // ---------------------------
   function renderCryptosPage() {
     document.getElementById("mainContent").innerHTML = `
       <div class="cryptos-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -986,7 +998,7 @@ document.addEventListener("DOMContentLoaded", function() {
     fetchCryptosData();
   }
 
-  // Calls the local API endpoint to avoid CORS issues
+  // Use the local API endpoint to avoid CORS issues
   function fetchCryptosData() {
     fetch("/api/coinmarketcap?limit=20")
       .then(response => response.json())
@@ -1002,7 +1014,7 @@ document.addEventListener("DOMContentLoaded", function() {
       });
   }
 
-  // Filter out stablecoins (coins with the "stablecoin" tag)
+  // Filter out stablecoins from the list
   function renderCryptosTable(cryptos) {
     const filteredCryptos = cryptos.filter(coin => {
       return !coin.tags || (coin.tags && !coin.tags.includes("stablecoin"));
@@ -1044,7 +1056,6 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("cryptosContent").innerHTML = tableHTML;
   }
 
-  // Helper function to format large numbers
   function formatNumber(num) {
     return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }
