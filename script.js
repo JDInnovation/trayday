@@ -68,7 +68,8 @@ document.addEventListener("DOMContentLoaded", function() {
     initialBank: 0,
     type: "normal", // soft, normal, aggressive
     trades: [],
-    riskPerTrade: 0,
+    // A partir de agora usaremos riskPerSession e maxTrades conforme o tipo selecionado.
+    riskPerSession: 0,
     maxTrades: 0,
     objectivePercent: 0
   };
@@ -233,7 +234,6 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("mainContent").innerHTML = loginHTML;
     document.getElementById("loginBtn").addEventListener("click", doLogin);
   }
-  
 
   function doLogin() {
     const email = document.getElementById("email").value.trim();
@@ -313,7 +313,6 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("recoverBtn").addEventListener("click", recoverPassword);
   }
   
-
   function recoverPassword() {
     const email = document.getElementById("email").value.trim();
     if (email === "") {
@@ -365,7 +364,6 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function renderArticles(category) {
-    const grid = document.getElementById("articlesGrid");
     let articlesHTML = `<div class="articles-grid">`;
     dummyArticles.forEach(article => {
       if (category === "all" || article.category === category) {
@@ -455,7 +453,7 @@ document.addEventListener("DOMContentLoaded", function() {
             <option value="normal">Normal</option>
             <option value="aggressive">Aggressive</option>
           </select>
-          <button id="startSessionBtn">Start Session</button>
+          <button id="startSessionBtn" class="primary-btn">Start Session</button>
         </div>
         <div class="session-info">
           <h3>Session Guidelines</h3>
@@ -467,6 +465,10 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("startSessionBtn").addEventListener("click", startSession);
   }
 
+  // Alteração na lógica da sessão:
+  // - Soft: maxTrades = 6, risco máximo 3% da banca
+  // - Normal: maxTrades = 4, risco máximo 6% da banca
+  // - Aggressive: maxTrades = 2, risco máximo 12% da banca
   function startSession() {
     const initialBank = parseFloat(document.getElementById("initialBank").value);
     const type = document.getElementById("sessionType").value;
@@ -478,16 +480,16 @@ document.addEventListener("DOMContentLoaded", function() {
     sessionData.type = type;
     sessionData.trades = [];
     if (type === "soft") {
-      sessionData.riskPerTrade = 0.01 * initialBank;
-      sessionData.maxTrades = 15;
+      sessionData.riskPerSession = 0.03 * initialBank;
+      sessionData.maxTrades = 6;
       sessionData.objectivePercent = 3;
     } else if (type === "normal") {
-      sessionData.riskPerTrade = 0.02 * initialBank;
-      sessionData.maxTrades = 10;
+      sessionData.riskPerSession = 0.06 * initialBank;
+      sessionData.maxTrades = 4;
       sessionData.objectivePercent = 5;
     } else if (type === "aggressive") {
-      sessionData.riskPerTrade = 0.03 * initialBank;
-      sessionData.maxTrades = 5;
+      sessionData.riskPerSession = 0.12 * initialBank;
+      sessionData.maxTrades = 2;
       sessionData.objectivePercent = 10;
     }
     sessionStartTime = new Date();
@@ -504,8 +506,67 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("session-timer").textContent = `${h}:${m}:${s}`;
   }
 
+  // Função para gerar dados de candlestick (agrupando os trades – ex.: de 2 em 2)
+  function generateCandlestickData() {
+    let runningBank = sessionData.initialBank;
+    const bankValues = [runningBank];
+    sessionData.trades.forEach(trade => {
+      runningBank += trade.value;
+      bankValues.push(runningBank);
+    });
+    const groupSize = 2;
+    const candles = [];
+    let startIndex = 0;
+    while (startIndex < bankValues.length - 1) {
+      const endIndex = Math.min(startIndex + groupSize, bankValues.length - 1);
+      const open = bankValues[startIndex];
+      const close = bankValues[endIndex];
+      const slice = bankValues.slice(startIndex, endIndex + 1);
+      const high = Math.max(...slice);
+      const low = Math.min(...slice);
+      candles.push({
+        x: startIndex, // ou um rótulo de grupo
+        o: open,
+        h: high,
+        l: low,
+        c: close
+      });
+      startIndex = endIndex;
+    }
+    return candles;
+  }
+
+  // Inicializa o gráfico de velas usando o plugin financial do Chart.js (necessita do plugin chartjs-chart-financial)
+  function initChart() {
+    const ctx = document.getElementById("performanceChart").getContext("2d");
+    const candlestickData = generateCandlestickData();
+    performanceChart = new Chart(ctx, {
+      type: 'candlestick',
+      data: {
+        datasets: [{
+          label: "Performance",
+          data: candlestickData
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Trade Group" } },
+          y: { title: { display: true, text: "Bank Value ($)" } }
+        }
+      }
+    });
+  }
+
+  function updateChart() {
+    if (performanceChart) {
+      const candlestickData = generateCandlestickData();
+      performanceChart.data.datasets[0].data = candlestickData;
+      performanceChart.update();
+    }
+  }
+
   function renderSessionDashboard() {
-    const worstBalance = sessionData.initialBank - (sessionData.riskPerTrade * sessionData.maxTrades);
+    const worstBalance = sessionData.initialBank - sessionData.riskPerSession;
     const bestBalance = sessionData.initialBank * (1 + sessionData.objectivePercent / 100);
     const dashboardHTML = `
       <div class="dashboard">
@@ -519,7 +580,7 @@ document.addEventListener("DOMContentLoaded", function() {
           <div class="dashboard-column">
             <h3>Session Information</h3>
             <p><strong>Initial Bank:</strong> $${sessionData.initialBank.toFixed(2)}</p>
-            <p><strong>Risk per Trade:</strong> $${sessionData.riskPerTrade.toFixed(2)}</p>
+            <p><strong>Max Loss Allowed:</strong> $${sessionData.riskPerSession.toFixed(2)}</p>
             <p><strong>Max Trades:</strong> ${sessionData.maxTrades}</p>
             <p><strong>Objective Profit:</strong> ${sessionData.objectivePercent}%</p>
             <p><strong>Current Bank:</strong> $<span id="currentBank">${sessionData.initialBank.toFixed(2)}</span></p>
@@ -545,7 +606,7 @@ document.addEventListener("DOMContentLoaded", function() {
             <h3>Enter Trade</h3>
             <label for="tradeValue">Trade Value ($):</label>
             <input type="number" id="tradeValue" placeholder="e.g., 50 or -30" />
-            <button id="addTradeBtn">Add Trade</button>
+            <button id="addTradeBtn" class="primary-btn">Add Trade</button>
           </div>
           <div class="dashboard-column">
             <h3>Performance Chart</h3>
@@ -573,7 +634,7 @@ document.addEventListener("DOMContentLoaded", function() {
         </div>
         <div class="dashboard-row">
           <div class="dashboard-column full-width">
-            <button id="endSessionBtn" style="background-color: var(--error-color);">
+            <button id="endSessionBtn" class="primary-btn" style="background-color: var(--error-color);">
               End Session
             </button>
           </div>
@@ -648,35 +709,25 @@ document.addEventListener("DOMContentLoaded", function() {
     updateDashboard();
   }
 
-  function initChart() {
-    const ctx = document.getElementById("performanceChart").getContext("2d");
-    performanceChart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: sessionData.trades.map((_, i) => i + 1),
-        datasets: [{
-          label: "Performance",
-          data: sessionData.trades.map(trade => trade.value),
-          borderColor: "rgba(0, 216, 255, 1)",
-          backgroundColor: "rgba(0, 216, 255, 0.2)",
-          fill: false
-        }]
-      },
-      options: {
-        scales: {
-          x: { title: { display: true, text: "Trade No." } },
-          y: { title: { display: true, text: "Value ($)" } }
-        }
-      }
+  // Funções para calcular métricas extras
+  function computeMaxDrawdown() {
+    let runningBank = sessionData.initialBank;
+    let peak = runningBank;
+    let maxDrawdown = 0;
+    sessionData.trades.forEach(trade => {
+      runningBank += trade.value;
+      if (runningBank > peak) peak = runningBank;
+      const drawdown = ((peak - runningBank) / sessionData.initialBank) * 100;
+      if (drawdown > maxDrawdown) maxDrawdown = drawdown;
     });
+    return maxDrawdown;
   }
 
-  function updateChart() {
-    if (performanceChart) {
-      performanceChart.data.labels = sessionData.trades.map((_, i) => i + 1);
-      performanceChart.data.datasets[0].data = sessionData.trades.map(trade => trade.value);
-      performanceChart.update();
-    }
+  function computeAverageOscillation() {
+    const candles = generateCandlestickData();
+    if (candles.length === 0) return 0;
+    const totalOscillation = candles.reduce((sum, candle) => sum + (candle.h - candle.l), 0);
+    return totalOscillation / candles.length;
   }
 
   // --- TERMINAR SESSÃO E ARMAZENAR NO FIRESTORE ---
@@ -691,6 +742,8 @@ document.addEventListener("DOMContentLoaded", function() {
     const totalGainLoss = sessionData.trades.reduce((sum, trade) => sum + trade.value, 0);
     const wins = sessionData.trades.filter(trade => trade.value > 0).length;
     const accuracy = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(2) : 0;
+    const maxDrawdown = computeMaxDrawdown();
+    const avgOscillation = computeAverageOscillation();
     const sessionSummary = {
       startTime: sessionStartTime,
       endTime: endTime,
@@ -699,7 +752,9 @@ document.addEventListener("DOMContentLoaded", function() {
       totalTrades: totalTrades,
       totalGainLoss: totalGainLoss,
       accuracy: accuracy,
-      type: sessionData.type
+      type: sessionData.type,
+      maxDrawdown: maxDrawdown,
+      avgOscillation: avgOscillation
     };
     sessionHistory.push(sessionSummary);
     await storeSessionData(sessionSummary);
@@ -713,9 +768,11 @@ document.addEventListener("DOMContentLoaded", function() {
         <p><strong>Total Trades:</strong> ${sessionSummary.totalTrades}</p>
         <p><strong>Total Gain/Loss:</strong> $${sessionSummary.totalGainLoss.toFixed(2)}</p>
         <p><strong>Accuracy:</strong> ${sessionSummary.accuracy}%</p>
+        <p><strong>Max Drawdown:</strong> ${sessionSummary.maxDrawdown.toFixed(2)}%</p>
+        <p><strong>Average Oscillation:</strong> $${sessionSummary.avgOscillation.toFixed(2)}</p>
       </div>
-      <button id="backSessionBtn">Back</button>
-      <button id="exportSessionBtn">Export Results</button>
+      <button id="backSessionBtn" class="primary-btn">Back</button>
+      <button id="exportSessionBtn" class="secondary-btn">Export Results</button>
     `;
     document.getElementById("mainContent").innerHTML = summaryHTML;
     document.getElementById("backSessionBtn").addEventListener("click", () => {
@@ -736,6 +793,8 @@ document.addEventListener("DOMContentLoaded", function() {
         totalGainLoss: sessionSummary.totalGainLoss,
         accuracy: sessionSummary.accuracy,
         type: sessionSummary.type,
+        maxDrawdown: sessionSummary.maxDrawdown,
+        avgOscillation: sessionSummary.avgOscillation,
         timestamp: new Date()
       });
       console.log("Dados da sessão armazenados com sucesso.");
@@ -977,33 +1036,60 @@ document.addEventListener("DOMContentLoaded", function() {
       </div>
     `;
     
-    const aggHTML = `
-      <div class="aggregate-stats">
-        <h3>Overall Performance</h3>
-        <p><strong>Total Sessions:</strong> ${filteredSessions.length}</p>
-        <p><strong>Total Trades:</strong> ${filteredSessions.reduce((acc, s) => acc + s.totalTrades, 0)}</p>
-        <p><strong>Total Gain/Loss:</strong> $${filteredSessions.reduce((acc, s) => acc + s.totalGainLoss, 0).toFixed(2)}</p>
-        <p><strong>Average Profit (%):</strong> ${(filteredSessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
-        <p><strong>Average Session Duration:</strong> --</p>
-        <p><strong>Best Session:</strong> $${Math.max(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
-        <p><strong>Worst Session:</strong> $${Math.min(...filteredSessions.map(s => s.totalGainLoss)).toFixed(2)}</p>
-        <p><strong>Average Accuracy:</strong> ${(filteredSessions.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / filteredSessions.length || 0).toFixed(2)}%</p>
+    const totalSessions = filteredSessions.length;
+    const totalTrades = filteredSessions.reduce((acc, s) => acc + s.totalTrades, 0);
+    const totalGainLoss = filteredSessions.reduce((acc, s) => acc + s.totalGainLoss, 0);
+    const avgProfitPercent = (filteredSessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / totalSessions || 0).toFixed(2);
+    const avgDrawdown = (filteredSessions.reduce((acc, s) => acc + parseFloat(s.maxDrawdown || 0), 0) / totalSessions || 0).toFixed(2);
+    const avgOscillation = (filteredSessions.reduce((acc, s) => acc + parseFloat(s.avgOscillation || 0), 0) / totalSessions || 0).toFixed(2);
+    
+    const statsCardsHTML = `
+      <div class="stats-cards">
+        <div class="stats-card">
+          <h3>Total Sessions</h3>
+          <p>${totalSessions}</p>
+        </div>
+        <div class="stats-card">
+          <h3>Total Trades</h3>
+          <p>${totalTrades}</p>
+        </div>
+        <div class="stats-card">
+          <h3>Total Gain/Loss</h3>
+          <p>$${totalGainLoss.toFixed(2)}</p>
+        </div>
+        <div class="stats-card">
+          <h3>Average Profit (%)</h3>
+          <p>${avgProfitPercent}%</p>
+        </div>
+        <div class="stats-card">
+          <h3>Max Drawdown (%)</h3>
+          <p>${avgDrawdown}%</p>
+        </div>
+        <div class="stats-card">
+          <h3>Avg Oscillation</h3>
+          <p>$${avgOscillation}</p>
+        </div>
       </div>
     `;
     
-    const resultsHTML = `
-      ${headerHTML}
-      ${aggHTML}
+    const chartsHTML = `
       <div class="dashboard-row">
         <div class="dashboard-column">
           <h3>Profit/Loss Chart</h3>
           <canvas id="resultsBarChart"></canvas>
         </div>
         <div class="dashboard-column">
+          <h3>Drawdown Chart</h3>
+          <canvas id="drawdownChart"></canvas>
+        </div>
+        <div class="dashboard-column">
           <h3>Profit Distribution</h3>
           <canvas id="resultsPieChart"></canvas>
         </div>
       </div>
+    `;
+    
+    const tableHTML = `
       <div class="dashboard-row">
         <div class="dashboard-column full-width">
           <h3>Detailed Session Table</h3>
@@ -1019,6 +1105,7 @@ document.addEventListener("DOMContentLoaded", function() {
                   <th>Total Trades</th>
                   <th>Total Gain/Loss</th>
                   <th>Accuracy</th>
+                  <th>Max Drawdown</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -1028,6 +1115,7 @@ document.addEventListener("DOMContentLoaded", function() {
       </div>
     `;
     
+    const resultsHTML = headerHTML + statsCardsHTML + chartsHTML + tableHTML;
     document.getElementById("mainContent").innerHTML = resultsHTML;
     document.getElementById("filterSelect").addEventListener("change", () => {
       renderResultsPage();
@@ -1035,6 +1123,7 @@ document.addEventListener("DOMContentLoaded", function() {
     renderResultsTable(filteredSessions);
     initResultsBarChart(filteredSessions);
     initResultsPieChart(filteredSessions);
+    initDrawdownChart(filteredSessions);
   }
   
   function applyFilter(sessions, filterValue) {
@@ -1093,6 +1182,7 @@ document.addEventListener("DOMContentLoaded", function() {
         <td>${s.totalTrades}</td>
         <td>$${s.totalGainLoss.toFixed(2)}</td>
         <td>${s.accuracy}%</td>
+        <td>${s.maxDrawdown.toFixed(2)}%</td>
       `;
       tbody.appendChild(row);
     });
@@ -1145,6 +1235,31 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
   }
+  
+  function initDrawdownChart(sessions) {
+    const labels = sessions.map((s, i) => `Session ${i + 1}`);
+    const drawdownValues = sessions.map(s => s.maxDrawdown);
+    const ctx = document.getElementById("drawdownChart").getContext("2d");
+    new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "Max Drawdown (%)",
+          data: drawdownValues,
+          backgroundColor: "rgba(255, 0, 0, 0.5)",
+          borderColor: "rgba(255, 0, 0, 1)",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Sessions" } },
+          y: { title: { display: true, text: "Drawdown (%)" }, beginAtZero: true }
+        }
+      }
+    });
+  }
 
   // --- NOVA PÁGINA: CRYPTOS ---
   function renderCryptosPage() {
@@ -1185,13 +1300,10 @@ document.addEventListener("DOMContentLoaded", function() {
         <thead>
           <tr>
             <th>Nome</th>
-            
             <th>Preço</th>
-            
             <th>24h %</th>
             <th>7d %</th>
             <th>30d %</th>
-            
           </tr>
         </thead>
         <tbody>
@@ -1200,13 +1312,10 @@ document.addEventListener("DOMContentLoaded", function() {
       tableHTML += `
         <tr>
           <td>${crypto.name}</td>
-          
           <td>$${crypto.quote.USD.price.toFixed(2)}</td>
-          
           <td>${crypto.quote.USD.percent_change_24h.toFixed(2)}%</td>
           <td>${crypto.quote.USD.percent_change_7d.toFixed(2)}%</td>
           <td>${crypto.quote.USD.percent_change_30d.toFixed(2)}%</td>
-          
         </tr>
       `;
     });
