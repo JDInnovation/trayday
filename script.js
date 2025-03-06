@@ -541,11 +541,15 @@ document.addEventListener("DOMContentLoaded", function() {
     const ctx = document.getElementById("performanceChart").getContext("2d");
     const candlestickData = generateCandlestickData();
     performanceChart = new Chart(ctx, {
-      type: 'candlestick',
+      type: 'bar', // Mude para "bar" como teste
       data: {
+        labels: candlestickData.map((d, i) => i + 1),
         datasets: [{
           label: "Performance",
-          data: candlestickData
+          data: candlestickData.map(d => d.c), // usar o valor de fechamento, por exemplo
+          backgroundColor: "rgba(0, 216, 255, 0.5)",
+          borderColor: "rgba(0, 216, 255, 1)",
+          borderWidth: 1
         }]
       },
       options: {
@@ -555,6 +559,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       }
     });
+    
   }
 
   function updateChart() {
