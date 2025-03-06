@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", function() {
     initialBank: 0,
     type: "normal", // soft, normal, aggressive
     trades: [],
-    // A partir de agora usaremos riskPerSession e maxTrades conforme o tipo selecionado.
+    // Agora definimos o risco máximo por sessão (em vez de por trade)
     riskPerSession: 0,
     maxTrades: 0,
     objectivePercent: 0
@@ -234,7 +234,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("mainContent").innerHTML = loginHTML;
     document.getElementById("loginBtn").addEventListener("click", doLogin);
   }
-
+  
   function doLogin() {
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
@@ -364,6 +364,7 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function renderArticles(category) {
+    const grid = document.getElementById("articlesGrid");
     let articlesHTML = `<div class="articles-grid">`;
     dummyArticles.forEach(article => {
       if (category === "all" || article.category === category) {
@@ -465,10 +466,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("startSessionBtn").addEventListener("click", startSession);
   }
 
-  // Alteração na lógica da sessão:
-  // - Soft: maxTrades = 6, risco máximo 3% da banca
-  // - Normal: maxTrades = 4, risco máximo 6% da banca
-  // - Aggressive: maxTrades = 2, risco máximo 12% da banca
+  // Nova lógica da sessão:
   function startSession() {
     const initialBank = parseFloat(document.getElementById("initialBank").value);
     const type = document.getElementById("sessionType").value;
@@ -479,16 +477,17 @@ document.addEventListener("DOMContentLoaded", function() {
     sessionData.initialBank = initialBank;
     sessionData.type = type;
     sessionData.trades = [];
+    // Define parâmetros conforme o tipo:
     if (type === "soft") {
-      sessionData.riskPerSession = 0.03 * initialBank;
+      sessionData.riskPerSession = 0.03 * initialBank; // 3%
       sessionData.maxTrades = 6;
       sessionData.objectivePercent = 3;
     } else if (type === "normal") {
-      sessionData.riskPerSession = 0.06 * initialBank;
+      sessionData.riskPerSession = 0.06 * initialBank; // 6%
       sessionData.maxTrades = 4;
       sessionData.objectivePercent = 5;
     } else if (type === "aggressive") {
-      sessionData.riskPerSession = 0.12 * initialBank;
+      sessionData.riskPerSession = 0.12 * initialBank; // 12%
       sessionData.maxTrades = 2;
       sessionData.objectivePercent = 10;
     }
@@ -506,7 +505,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("session-timer").textContent = `${h}:${m}:${s}`;
   }
 
-  // Função para gerar dados de candlestick (agrupando os trades – ex.: de 2 em 2)
+  // Função para gerar dados de candlestick a partir dos trades
   function generateCandlestickData() {
     let runningBank = sessionData.initialBank;
     const bankValues = [runningBank];
@@ -514,6 +513,7 @@ document.addEventListener("DOMContentLoaded", function() {
       runningBank += trade.value;
       bankValues.push(runningBank);
     });
+    // Agrupa os dados em blocos de 2
     const groupSize = 2;
     const candles = [];
     let startIndex = 0;
@@ -525,7 +525,7 @@ document.addEventListener("DOMContentLoaded", function() {
       const high = Math.max(...slice);
       const low = Math.min(...slice);
       candles.push({
-        x: startIndex, // ou um rótulo
+        x: `Group ${Math.floor(startIndex/groupSize)+1}`,
         o: open,
         h: high,
         l: low,
@@ -533,22 +533,13 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       startIndex = endIndex;
     }
-    if (candles.length === 0) {
-      candles.push({
-        x: 0,
-        o: sessionData.initialBank,
-        h: sessionData.initialBank,
-        l: sessionData.initialBank,
-        c: sessionData.initialBank
-      });
-    }
     return candles;
   }
-  
-  // Inicializa o gráfico de velas usando o plugin financial do Chart.js (necessita do plugin chartjs-chart-financial)
-  function initChart() {
-    const ctx = document.getElementById("performanceChart").getContext("2d");
+
+  // Inicializa o gráfico de candlestick (necessário o plugin chartjs-chart-financial)
+  function initCandlestickChart() {
     const candlestickData = generateCandlestickData();
+    const ctx = document.getElementById("performanceChart").getContext("2d");
     performanceChart = new Chart(ctx, {
       type: 'candlestick',
       data: {
@@ -559,17 +550,22 @@ document.addEventListener("DOMContentLoaded", function() {
       },
       options: {
         scales: {
-          x: { title: { display: true, text: "Trade Group" } },
-          y: { title: { display: true, text: "Bank Value ($)" } }
+          x: {
+            title: { display: true, text: "Trade Group" }
+          },
+          y: {
+            title: { display: true, text: "Bank Value ($)" }
+          }
         }
       }
     });
   }
 
+  // Atualiza o gráfico chamando novamente a função de geração de dados
   function updateChart() {
     if (performanceChart) {
-      const candlestickData = generateCandlestickData();
-      performanceChart.data.datasets[0].data = candlestickData;
+      const newData = generateCandlestickData();
+      performanceChart.data.datasets[0].data = newData;
       performanceChart.update();
     }
   }
@@ -589,7 +585,7 @@ document.addEventListener("DOMContentLoaded", function() {
           <div class="dashboard-column">
             <h3>Session Information</h3>
             <p><strong>Initial Bank:</strong> $${sessionData.initialBank.toFixed(2)}</p>
-            <p><strong>Max Loss Allowed:</strong> $${sessionData.riskPerSession.toFixed(2)}</p>
+            <p><strong>Max Risk per Session:</strong> $${sessionData.riskPerSession.toFixed(2)}</p>
             <p><strong>Max Trades:</strong> ${sessionData.maxTrades}</p>
             <p><strong>Objective Profit:</strong> ${sessionData.objectivePercent}%</p>
             <p><strong>Current Bank:</strong> $<span id="currentBank">${sessionData.initialBank.toFixed(2)}</span></p>
@@ -643,7 +639,7 @@ document.addEventListener("DOMContentLoaded", function() {
         </div>
         <div class="dashboard-row">
           <div class="dashboard-column full-width">
-            <button id="endSessionBtn" class="primary-btn" style="background-color: var(--error-color);">
+            <button id="endSessionBtn" class="secondary-btn" style="background-color: var(--error-color);">
               End Session
             </button>
           </div>
@@ -653,7 +649,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("mainContent").innerHTML = dashboardHTML;
     document.getElementById("addTradeBtn").addEventListener("click", addTrade);
     document.getElementById("endSessionBtn").addEventListener("click", terminateSession);
-    initChart();
+    initCandlestickChart();
   }
 
   function addTrade() {
@@ -718,7 +714,7 @@ document.addEventListener("DOMContentLoaded", function() {
     updateDashboard();
   }
 
-  // Funções para calcular métricas extras
+  // --- FUNÇÕES PARA MÉTRICAS ADICIONAIS ---
   function computeMaxDrawdown() {
     let runningBank = sessionData.initialBank;
     let peak = runningBank;
@@ -753,6 +749,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const accuracy = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(2) : 0;
     const maxDrawdown = computeMaxDrawdown();
     const avgOscillation = computeAverageOscillation();
+    
     const sessionSummary = {
       startTime: sessionStartTime,
       endTime: endTime,
@@ -778,9 +775,9 @@ document.addEventListener("DOMContentLoaded", function() {
         <p><strong>Total Gain/Loss:</strong> $${sessionSummary.totalGainLoss.toFixed(2)}</p>
         <p><strong>Accuracy:</strong> ${sessionSummary.accuracy}%</p>
         <p><strong>Max Drawdown:</strong> ${sessionSummary.maxDrawdown.toFixed(2)}%</p>
-        <p><strong>Average Oscillation:</strong> $${sessionSummary.avgOscillation.toFixed(2)}</p>
+        <p><strong>Avg Oscillation:</strong> $${sessionSummary.avgOscillation.toFixed(2)}</p>
       </div>
-      <button id="backSessionBtn" class="primary-btn">Back</button>
+      <button id="backSessionBtn" class="secondary-btn">Back</button>
       <button id="exportSessionBtn" class="secondary-btn">Export Results</button>
     `;
     document.getElementById("mainContent").innerHTML = summaryHTML;
@@ -1026,6 +1023,14 @@ document.addEventListener("DOMContentLoaded", function() {
     
     const filteredSessions = applyFilter(sortedSessions, filterValue);
     
+    // Novas métricas agregadas:
+    const totalSessions = filteredSessions.length;
+    const totalTrades = filteredSessions.reduce((acc, s) => acc + s.totalTrades, 0);
+    const totalGainLoss = filteredSessions.reduce((acc, s) => acc + s.totalGainLoss, 0);
+    const avgProfitPercent = (filteredSessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / totalSessions || 0).toFixed(2);
+    const avgDrawdown = (filteredSessions.reduce((acc, s) => acc + parseFloat(s.maxDrawdown || 0), 0) / totalSessions || 0).toFixed(2);
+    const avgOscillation = (filteredSessions.reduce((acc, s) => acc + parseFloat(s.avgOscillation || 0), 0) / totalSessions || 0).toFixed(2);
+
     const headerHTML = `
       <div class="results-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2>Session Results</h2>
@@ -1044,13 +1049,6 @@ document.addEventListener("DOMContentLoaded", function() {
         </div>
       </div>
     `;
-    
-    const totalSessions = filteredSessions.length;
-    const totalTrades = filteredSessions.reduce((acc, s) => acc + s.totalTrades, 0);
-    const totalGainLoss = filteredSessions.reduce((acc, s) => acc + s.totalGainLoss, 0);
-    const avgProfitPercent = (filteredSessions.reduce((acc, s) => acc + ((s.totalGainLoss / s.initialBank) * 100), 0) / totalSessions || 0).toFixed(2);
-    const avgDrawdown = (filteredSessions.reduce((acc, s) => acc + parseFloat(s.maxDrawdown || 0), 0) / totalSessions || 0).toFixed(2);
-    const avgOscillation = (filteredSessions.reduce((acc, s) => acc + parseFloat(s.avgOscillation || 0), 0) / totalSessions || 0).toFixed(2);
     
     const statsCardsHTML = `
       <div class="stats-cards">
@@ -1125,6 +1123,7 @@ document.addEventListener("DOMContentLoaded", function() {
     `;
     
     const resultsHTML = headerHTML + statsCardsHTML + chartsHTML + tableHTML;
+    
     document.getElementById("mainContent").innerHTML = resultsHTML;
     document.getElementById("filterSelect").addEventListener("change", () => {
       renderResultsPage();
@@ -1191,7 +1190,7 @@ document.addEventListener("DOMContentLoaded", function() {
         <td>${s.totalTrades}</td>
         <td>$${s.totalGainLoss.toFixed(2)}</td>
         <td>${s.accuracy}%</td>
-        <td>${s.maxDrawdown.toFixed(2)}%</td>
+        <td>${s.maxDrawdown ? s.maxDrawdown.toFixed(2) + "%" : "-"}</td>
       `;
       tbody.appendChild(row);
     });
@@ -1244,7 +1243,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
   }
-  
+
   function initDrawdownChart(sessions) {
     const labels = sessions.map((s, i) => `Session ${i + 1}`);
     const drawdownValues = sessions.map(s => s.maxDrawdown);
@@ -1298,10 +1297,9 @@ document.addEventListener("DOMContentLoaded", function() {
       });
   }
 
-  // Aqui filtramos para remover as stablecoins (aqueles que possuem a tag "stablecoin")
+  // Filtramos para remover as stablecoins (aqueles que possuem a tag "stablecoin")
   function renderCryptosTable(cryptos) {
     const filteredCryptos = cryptos.filter(coin => {
-      // Se não houver tag ou se houver e não incluir "stablecoin"
       return !coin.tags || (coin.tags && !coin.tags.includes("stablecoin"));
     });
     let tableHTML = `
