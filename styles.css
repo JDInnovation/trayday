@@ -558,3 +558,8 @@ th {
   flex-wrap: wrap;
   margin-top: 20px;
 }
+
+canvas {
+  width: 100% !important;
+  height: 300px !important;
+}

@@ -525,7 +525,7 @@ document.addEventListener("DOMContentLoaded", function() {
       const high = Math.max(...slice);
       const low = Math.min(...slice);
       candles.push({
-        x: startIndex, // ou um rótulo de grupo
+        x: startIndex, // ou um rótulo
         o: open,
         h: high,
         l: low,
@@ -533,23 +533,28 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       startIndex = endIndex;
     }
+    if (candles.length === 0) {
+      candles.push({
+        x: 0,
+        o: sessionData.initialBank,
+        h: sessionData.initialBank,
+        l: sessionData.initialBank,
+        c: sessionData.initialBank
+      });
+    }
     return candles;
   }
-
+  
   // Inicializa o gráfico de velas usando o plugin financial do Chart.js (necessita do plugin chartjs-chart-financial)
   function initChart() {
     const ctx = document.getElementById("performanceChart").getContext("2d");
     const candlestickData = generateCandlestickData();
     performanceChart = new Chart(ctx, {
-      type: 'bar', // Mude para "bar" como teste
+      type: 'candlestick',
       data: {
-        labels: candlestickData.map((d, i) => i + 1),
         datasets: [{
           label: "Performance",
-          data: candlestickData.map(d => d.c), // usar o valor de fechamento, por exemplo
-          backgroundColor: "rgba(0, 216, 255, 0.5)",
-          borderColor: "rgba(0, 216, 255, 1)",
-          borderWidth: 1
+          data: candlestickData
         }]
       },
       options: {
@@ -559,7 +564,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       }
     });
-    
   }
 
   function updateChart() {
