@@ -272,25 +272,130 @@ th {
   margin-bottom: 5px;
 }
 
-/* Tabs (para Scalping e Calculators) */
-.scalping-tabs, .calc-tabs {
+/* Home - Abas de categorias */
+.article-tabs {
   display: flex;
-  gap: 10px;
+  gap: 14px;
   margin-bottom: 20px;
-  justify-content: center;
+  border-bottom: 2px solid var(--secondary-color);
+  overflow-x: auto;
+  white-space: nowrap;
 }
-.tab-btn, .calc-tab {
-  padding: 10px 20px;
-  background-color: var(--secondary-color);
-  border: none;
-  color: var(--white);
+.article-tab {
   cursor: pointer;
-  border-radius: 4px;
-  transition: background-color 0.3s ease;
+  padding: 10px 15px;
+  color: var(--white);
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.3s ease;
 }
-.tab-btn.active, .calc-tab.active {
-  background-color: var(--accent-color);
-  color: black;
+.article-tab.active {
+  border-bottom: 2px solid var(--accent-color);
+}
+
+/* Artigos em grid */
+.articles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+.article-card {
+  background-color: #2a2a2a;
+  padding: 15px;
+  border-radius: 4px;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+  cursor: pointer;
+  box-shadow: rgba(0, 0, 0, 0.407) 0px 0px 20px, rgba(0, 0, 0, 0.481) 0px 0px 15px;
+}
+.article-card:hover {
+  box-shadow: 0 0 8px var(--accent-color);
+  transform: scale(1.01);
+}
+.article-card img {
+  max-width: 100%;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+.article-card h3 {
+  margin-top: 0;
+  color: var(--accent-color);
+}
+.article-card p {
+  font-size: 14px;
+}
+.article-card .read-more {
+  color: var(--accent-color);
+  text-decoration: none;
+  font-weight: bold;
+}
+
+/* Página de artigo individual */
+.article-page {
+  animation: fadeIn 0.5s ease-out;
+}
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--accent-color);
+  font-size: 18px;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+.article-main-img {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  margin-bottom: 20px;
+  border-radius: 4px;
+}
+
+/* Neon effect para a tela de iniciar sessão (Scalping) */
+.neon-box {
+  background-color: var(--primary-color);
+  border-radius: 8px;
+  padding: 20px;
+  margin: 50px auto;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Calculators - Interface por abas */
+.calc-tabs {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--secondary-color);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.calc-tab {
+  cursor: pointer;
+  padding: 10px 15px;
+  color: var(--white);
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.3s ease;
+}
+.calc-tab.active {
+  border-bottom: 2px solid var(--accent-color);
+}
+.calc-content {
+  background-color: #2A2A2A;
+  padding: 20px;
+  border-radius: 4px;
+  text-align: center;
+  box-shadow: rgba(0, 0, 0, 0.407) 0px 0px 20px, rgba(0, 0, 0, 0.481) 0px 0px 15px;
+}
+.calc-item {
+  display: none;
+}
+.calc-item.active {
+  display: block;
+}
+.calc-explanation {
+  margin-top: 15px;
+  font-size: 14px;
+  color: var(--accent-color);
 }
 
 /* Estilos para as páginas de autenticação */
