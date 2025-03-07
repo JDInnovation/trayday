@@ -19,8 +19,6 @@ import {
   getDocs,
   updateDoc
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
-import Chart from 'chart.js/auto';
-import 'chartjs-chart-financial';
 
 
 document.addEventListener("DOMContentLoaded", function() {
