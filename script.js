@@ -16,7 +16,8 @@ import {
   onSnapshot,
   deleteDoc,
   doc,
-  getDocs
+  getDocs,
+  updateDoc
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -26,6 +27,8 @@ document.addEventListener("DOMContentLoaded", function() {
   let sessionHistory = [];
   // Variável para cancelar o listener em tempo real, se necessário
   let unsubscribeSessions = null;
+  // Variável para a conta de swing trading atualmente selecionada
+  let currentAccount = null;
 
   // Dummy articles para a Home
   const dummyArticles = [
@@ -61,14 +64,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   ];
 
-  // Variáveis para a sessão de scalping
+  // ----- SESSÃO DE SCALPING (já existente com ajustes) -----
   let sessionStartTime;
   let sessionTimerInterval;
   let sessionData = {
     initialBank: 0,
     type: "normal", // soft, normal, aggressive
     trades: [],
-    // Agora definimos o risco máximo por sessão (em vez de por trade)
     riskPerSession: 0,
     maxTrades: 0,
     objectivePercent: 0
@@ -78,18 +80,19 @@ document.addEventListener("DOMContentLoaded", function() {
   let performanceChart;
   let resultsChart;
 
-  // Mapeamento de ícones para o menu (incluindo novo item "cryptos")
+  // Mapeamento de ícones para o menu (incluindo novo item "cryptos" e "accounts")
   const iconMap = {
     home: '<i class="fas fa-home menu-icon"></i>',
     cryptos: '<i class="fas fa-coins menu-icon"></i>',
     sessao: '<i class="fas fa-chart-line menu-icon"></i>',
     resultados: '<i class="fas fa-table menu-icon"></i>',
     calculators: '<i class="fas fa-calculator menu-icon"></i>',
+    accounts: '<i class="fas fa-wallet menu-icon"></i>',
     perfil: '<i class="fas fa-user menu-icon"></i>',
     login: '<i class="fas fa-sign-in-alt menu-icon"></i>'
   };
 
-  // Atualiza o menu
+  // Atualiza o menu – agora inclui "Accounts" para utilizadores autenticados
   function updateMenu() {
     const menuLinks = document.getElementById("menuLinks");
     menuLinks.innerHTML = "";
@@ -99,6 +102,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { hash: "#home", label: "Home", key: "home" },
         { hash: "#cryptos", label: "Cryptos", key: "cryptos" },
         { hash: "#sessao", label: "Scalping", key: "sessao" },
+        { hash: "#accounts", label: "Accounts", key: "accounts" },
         { hash: "#resultados", label: "Results", key: "resultados" },
         { hash: "#calculators", label: "Calculators", key: "calculators" },
         { hash: "#perfil", label: "Profile", key: "perfil" }
@@ -149,7 +153,7 @@ document.addEventListener("DOMContentLoaded", function() {
       startSessionsListener();
     } else {
       let section = window.location.hash.substring(1);
-      if (["perfil", "sessao", "resultados", "calculators", "cryptos"].includes(section)) {
+      if (["perfil", "sessao", "resultados", "calculators", "cryptos", "accounts"].includes(section)) {
         window.location.hash = "login";
       }
       if (typeof unsubscribeSessions === "function") {
@@ -159,7 +163,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  // Roteamento
+  // Roteamento – adicionamos o case "accounts"
   function loadContent() {
     let section = window.location.hash.substring(1);
     if (!section) section = "home";
@@ -167,7 +171,7 @@ document.addEventListener("DOMContentLoaded", function() {
       renderArticlePage(section.substring(8));
       return;
     }
-    if ((["perfil", "calculators", "sessao", "resultados", "cryptos"].includes(section)) && !currentUser) {
+    if ((["perfil", "calculators", "sessao", "resultados", "cryptos", "accounts"].includes(section)) && !currentUser) {
       window.location.hash = "login";
       return;
     }
@@ -190,6 +194,9 @@ document.addEventListener("DOMContentLoaded", function() {
       case "sessao":
         renderSessionStart();
         break;
+      case "accounts":
+        renderAccountsPage();
+        break;
       case "resultados":
         renderResultsPage();
         break;
@@ -211,7 +218,7 @@ document.addEventListener("DOMContentLoaded", function() {
   updateMenu();
   loadContent();
 
-  // --- FUNÇÕES DE AUTENTICAÇÃO ---
+  // --- FUNÇÕES DE AUTENTICAÇÃO (Login, SignUp, Recover) ---
   function renderLogin() {
     const loginHTML = `
       <div class="auth-container">
@@ -440,7 +447,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // --- SCALPING SESSION ---
+  // --- SCALPING SESSION (com novas lógicas e gráfico de candlestick) ---
   function renderSessionStart() {
     const sessionStartHTML = `
       <div class="neon-box">
@@ -466,7 +473,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("startSessionBtn").addEventListener("click", startSession);
   }
 
-  // Nova lógica da sessão:
+  // Nova lógica da sessão de scalping:
   function startSession() {
     const initialBank = parseFloat(document.getElementById("initialBank").value);
     const type = document.getElementById("sessionType").value;
@@ -477,7 +484,6 @@ document.addEventListener("DOMContentLoaded", function() {
     sessionData.initialBank = initialBank;
     sessionData.type = type;
     sessionData.trades = [];
-    // Define parâmetros conforme o tipo:
     if (type === "soft") {
       sessionData.riskPerSession = 0.03 * initialBank; // 3%
       sessionData.maxTrades = 6;
@@ -505,7 +511,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("session-timer").textContent = `${h}:${m}:${s}`;
   }
 
-  // Função para gerar dados de candlestick a partir dos trades
+  // Gera dados de candlestick a partir dos trades (agrupa de 2 em 2)
   function generateCandlestickData() {
     let runningBank = sessionData.initialBank;
     const bankValues = [runningBank];
@@ -513,7 +519,6 @@ document.addEventListener("DOMContentLoaded", function() {
       runningBank += trade.value;
       bankValues.push(runningBank);
     });
-    // Agrupa os dados em blocos de 2
     const groupSize = 2;
     const candles = [];
     let startIndex = 0;
@@ -536,7 +541,7 @@ document.addEventListener("DOMContentLoaded", function() {
     return candles;
   }
 
-  // Inicializa o gráfico de candlestick (necessário o plugin chartjs-chart-financial)
+  // Inicializa o gráfico de candlestick (requer plugin chartjs-chart-financial)
   function initCandlestickChart() {
     const candlestickData = generateCandlestickData();
     const ctx = document.getElementById("performanceChart").getContext("2d");
@@ -561,7 +566,6 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // Atualiza o gráfico chamando novamente a função de geração de dados
   function updateChart() {
     if (performanceChart) {
       const newData = generateCandlestickData();
@@ -626,8 +630,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 <thead>
                   <tr>
                     <th>#</th>
+                    <th>Type</th>
                     <th>Value ($)</th>
-                    <th>Pct Gain (%)</th>
                     <th>Date/Time</th>
                     <th>Remove</th>
                   </tr>
@@ -664,6 +668,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     const trade = {
       id: sessionData.trades.length + 1,
+      type: "trade",
       value: value,
       date: new Date()
     };
@@ -676,12 +681,11 @@ document.addEventListener("DOMContentLoaded", function() {
     const tbody = document.querySelector("#tradesTable tbody");
     tbody.innerHTML = "";
     sessionData.trades.forEach((trade, index) => {
-      const pctGain = ((trade.value / sessionData.initialBank) * 100).toFixed(2);
       const row = document.createElement("tr");
       row.innerHTML = `
         <td>${trade.id}</td>
+        <td>${trade.type}</td>
         <td>$${trade.value.toFixed(2)}</td>
-        <td>${pctGain}%</td>
         <td>${trade.date.toLocaleString()}</td>
         <td><button class="remove-btn" data-index="${index}">X</button></td>
       `;
@@ -714,7 +718,7 @@ document.addEventListener("DOMContentLoaded", function() {
     updateDashboard();
   }
 
-  // --- FUNÇÕES PARA MÉTRICAS ADICIONAIS ---
+  // Calcula o máximo drawdown da sessão
   function computeMaxDrawdown() {
     let runningBank = sessionData.initialBank;
     let peak = runningBank;
@@ -728,6 +732,7 @@ document.addEventListener("DOMContentLoaded", function() {
     return maxDrawdown;
   }
 
+  // Calcula a oscilação média usando os dados de candlestick
   function computeAverageOscillation() {
     const candles = generateCandlestickData();
     if (candles.length === 0) return 0;
@@ -735,7 +740,7 @@ document.addEventListener("DOMContentLoaded", function() {
     return totalOscillation / candles.length;
   }
 
-  // --- TERMINAR SESSÃO E ARMAZENAR NO FIRESTORE ---
+  // Termina a sessão de scalping e armazena os dados no Firestore
   async function terminateSession() {
     if (!confirm("Are you sure you want to end the session?")) return;
     clearInterval(sessionTimerInterval);
@@ -809,7 +814,468 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // --- CALCULATORS SECTION ---
+  // --- NOVA ABA: ACCOUNTS (Dashboard para conta de Swing Trading) ---
+
+  // Renderiza a página de accounts
+  async function renderAccountsPage() {
+    // Busca contas do utilizador na coleção "accounts" com status "open"
+    const accountsRef = collection(db, "accounts");
+    const q = query(accountsRef, where("uid", "==", currentUser.uid), where("status", "==", "open"));
+    const querySnapshot = await getDocs(q);
+    const accounts = [];
+    querySnapshot.forEach(docSnap => {
+      accounts.push({ id: docSnap.id, ...docSnap.data() });
+    });
+
+    if (accounts.length === 0) {
+      // Se não houver contas, mostra o card para criar conta
+      document.getElementById("mainContent").innerHTML = `
+        <div class="account-container">
+          <div class="account-card">
+            <h2>Você ainda não tem uma conta de Swing Trading</h2>
+            <p>Crie sua conta para começar a registrar seus trades e acompanhar sua performance.</p>
+            <button id="createAccountBtn" class="primary-btn">Criar Conta</button>
+          </div>
+        </div>
+      `;
+      document.getElementById("createAccountBtn").addEventListener("click", renderCreateAccountForm);
+    } else if (accounts.length === 1) {
+      // Se existir uma conta, vai direto para o dashboard dessa conta
+      currentAccount = accounts[0];
+      renderAccountDashboard(currentAccount);
+    } else {
+      // Se houver mais de uma conta, lista todas
+      let listHTML = `<div class="account-container"><h2>Suas Contas</h2><div class="accounts-list">`;
+      accounts.forEach(acct => {
+        listHTML += `
+          <div class="account-card clickable" data-id="${acct.id}">
+            <h3>${acct.accountName}</h3>
+            <p>Saldo Atual: $${acct.currentBalance.toFixed(2)}</p>
+          </div>
+        `;
+      });
+      listHTML += `</div></div>`;
+      document.getElementById("mainContent").innerHTML = listHTML;
+      document.querySelectorAll(".account-card.clickable").forEach(card => {
+        card.addEventListener("click", function() {
+          const acctId = this.getAttribute("data-id");
+          const acct = accounts.find(a => a.id === acctId);
+          currentAccount = acct;
+          renderAccountDashboard(acct);
+        });
+      });
+    }
+  }
+
+  // Renderiza o formulário de criação de conta
+  function renderCreateAccountForm() {
+    document.getElementById("mainContent").innerHTML = `
+      <div class="account-container">
+        <div class="account-card">
+          <h2>Criar Conta de Swing Trading</h2>
+          <form id="createAccountForm" class="account-form">
+            <label for="accountName">Nome da Conta:</label>
+            <input type="text" id="accountName" placeholder="Ex: Minha Conta" required />
+            <label for="initialBalance">Banca Inicial ($):</label>
+            <input type="number" id="initialBalance" placeholder="Ex: 5000" min="0" required />
+            <button type="button" class="primary-btn" id="submitAccountBtn">Criar Conta</button>
+          </form>
+          <button type="button" class="secondary-btn" onclick="window.location.hash='#accounts'">Voltar</button>
+        </div>
+      </div>
+    `;
+    document.getElementById("submitAccountBtn").addEventListener("click", createAccount);
+  }
+
+  // Cria a conta e armazena no Firestore
+  async function createAccount() {
+    const accountName = document.getElementById("accountName").value.trim();
+    const initialBalance = parseFloat(document.getElementById("initialBalance").value);
+    if (accountName === "" || isNaN(initialBalance) || initialBalance <= 0) {
+      alert("Preencha todos os campos com valores válidos.");
+      return;
+    }
+    try {
+      const newAccount = {
+        uid: currentUser.uid,
+        accountName: accountName,
+        initialBalance: initialBalance,
+        currentBalance: initialBalance,
+        status: "open",
+        createdAt: new Date(),
+        trades: []  // Array de trades (cada trade terá: id, type, value, date)
+      };
+      const docRef = await addDoc(collection(db, "accounts"), newAccount);
+      newAccount.id = docRef.id;
+      currentAccount = newAccount;
+      renderAccountDashboard(newAccount);
+    } catch (error) {
+      alert("Erro ao criar conta: " + error.message);
+    }
+  }
+
+  // Renderiza o dashboard da conta de swing trading
+  function renderAccountDashboard(account) {
+    let dashboardHTML = `
+      <div class="account-dashboard">
+        <div class="account-header">
+          <h2>${account.accountName}</h2>
+          <p>Saldo Atual: $<span id="accountBalance">${account.currentBalance.toFixed(2)}</span></p>
+          <div class="account-actions">
+            <button id="depositBtn" class="primary-btn">Depósito</button>
+            <button id="withdrawBtn" class="primary-btn">Retirada</button>
+            <button id="closeAccountBtn" class="secondary-btn">Fechar Conta</button>
+            <button id="exportAccountBtn" class="secondary-btn">Exportar Resultados</button>
+          </div>
+        </div>
+        <div class="account-controls">
+          <h3>Registrar Trade de Swing</h3>
+          <label for="swingTradeValue">Valor do Trade ($):</label>
+          <input type="number" id="swingTradeValue" placeholder="Ex: 100 ou -50" />
+          <button id="addSwingTradeBtn" class="primary-btn">Adicionar Trade</button>
+        </div>
+        <div class="account-filters">
+          <label for="filterCount">Filtrar por número de trades:</label>
+          <select id="filterCount">
+            <option value="all">Todos</option>
+            <option value="4">Últimos 4</option>
+            <option value="10">Últimos 10</option>
+            <option value="20">Últimos 20</option>
+            <option value="40">Últimos 40</option>
+            <option value="80">Últimos 80</option>
+            <option value="160">Últimos 160</option>
+          </select>
+          <label for="filterDays">Filtrar por dias:</label>
+          <select id="filterDays">
+            <option value="all">Todos</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="90">Últimos 90 dias</option>
+            <option value="360">Últimos 360 dias</option>
+          </select>
+          <button id="applyFilterBtn" class="secondary-btn">Aplicar Filtro</button>
+        </div>
+        <div class="account-stats">
+          <h3>Estatísticas</h3>
+          <div class="stats-cards">
+            <div class="stats-card">
+              <h4>Total Trades</h4>
+              <p id="accTotalTrades">0</p>
+            </div>
+            <div class="stats-card">
+              <h4>Total P/L</h4>
+              <p id="accTotalPL">$0.00</p>
+            </div>
+            <div class="stats-card">
+              <h4>Win Rate</h4>
+              <p id="accWinRate">0%</p>
+            </div>
+            <div class="stats-card">
+              <h4>Média Trade</h4>
+              <p id="accAvgTrade">$0.00</p>
+            </div>
+            <div class="stats-card">
+              <h4>Max Drawdown</h4>
+              <p id="accMaxDrawdown">0%</p>
+            </div>
+          </div>
+        </div>
+        <div class="account-charts dashboard-row">
+          <div class="dashboard-column">
+            <h3>Evolução do Saldo</h3>
+            <canvas id="accBalanceChart"></canvas>
+          </div>
+          <div class="dashboard-column">
+            <h3>Distribuição dos Trades</h3>
+            <canvas id="accTradesChart"></canvas>
+          </div>
+        </div>
+        <div class="account-history">
+          <h3>Histórico de Trades</h3>
+          <div class="table-responsive">
+            <table id="accTradesTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Tipo</th>
+                  <th>Valor ($)</th>
+                  <th>Data/Hora</th>
+                  <th>Remover</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("mainContent").innerHTML = dashboardHTML;
+    // Configura os botões de ação
+    document.getElementById("addSwingTradeBtn").addEventListener("click", addSwingTrade);
+    document.getElementById("depositBtn").addEventListener("click", depositFunds);
+    document.getElementById("withdrawBtn").addEventListener("click", withdrawFunds);
+    document.getElementById("closeAccountBtn").addEventListener("click", closeAccount);
+    document.getElementById("exportAccountBtn").addEventListener("click", exportAccountData);
+    document.getElementById("applyFilterBtn").addEventListener("click", applyAccountFilters);
+    updateAccountDashboard();
+  }
+
+  // Atualiza a interface do dashboard da conta a partir do currentAccount
+  function updateAccountDashboard() {
+    // Atualiza saldo
+    document.getElementById("accountBalance").textContent = currentAccount.currentBalance.toFixed(2);
+    // Atualiza tabela de trades
+    renderAccountTradesTable(currentAccount.trades);
+    // Atualiza estatísticas
+    const totalTrades = currentAccount.trades.length;
+    const totalPL = currentAccount.trades.reduce((sum, trade) => sum + trade.value, 0);
+    const wins = currentAccount.trades.filter(trade => trade.value > 0).length;
+    const winRate = totalTrades ? ((wins / totalTrades) * 100).toFixed(2) : 0;
+    const avgTrade = totalTrades ? (totalPL / totalTrades).toFixed(2) : 0;
+    const maxDrawdown = computeAccountMaxDrawdown(currentAccount);
+    document.getElementById("accTotalTrades").textContent = totalTrades;
+    document.getElementById("accTotalPL").textContent = "$" + totalPL.toFixed(2);
+    document.getElementById("accWinRate").textContent = winRate + "%";
+    document.getElementById("accAvgTrade").textContent = "$" + avgTrade;
+    document.getElementById("accMaxDrawdown").textContent = maxDrawdown.toFixed(2) + "%";
+    // Atualiza gráficos
+    initAccountBalanceChart(currentAccount);
+    initAccountTradesChart(currentAccount);
+  }
+
+  // Adiciona um trade de swing à conta
+  async function addSwingTrade() {
+    const value = parseFloat(document.getElementById("swingTradeValue").value);
+    if (isNaN(value)) {
+      alert("Digite um valor válido para o trade.");
+      return;
+    }
+    const trade = {
+      id: currentAccount.trades.length + 1,
+      type: "trade",
+      value: value,
+      date: new Date()
+    };
+    currentAccount.trades.push(trade);
+    // Atualiza o saldo
+    currentAccount.currentBalance += value;
+    await updateDoc(doc(db, "accounts", currentAccount.id), {
+      trades: currentAccount.trades,
+      currentBalance: currentAccount.currentBalance
+    });
+    updateAccountDashboard();
+    document.getElementById("swingTradeValue").value = "";
+  }
+
+  // Permite fazer um depósito
+  async function depositFunds() {
+    const amount = parseFloat(prompt("Digite o valor do depósito:"));
+    if (isNaN(amount) || amount <= 0) {
+      alert("Valor inválido.");
+      return;
+    }
+    const trade = {
+      id: currentAccount.trades.length + 1,
+      type: "deposit",
+      value: amount,
+      date: new Date()
+    };
+    currentAccount.trades.push(trade);
+    currentAccount.currentBalance += amount;
+    await updateDoc(doc(db, "accounts", currentAccount.id), {
+      trades: currentAccount.trades,
+      currentBalance: currentAccount.currentBalance
+    });
+    updateAccountDashboard();
+  }
+
+  // Permite fazer uma retirada
+  async function withdrawFunds() {
+    const amount = parseFloat(prompt("Digite o valor da retirada:"));
+    if (isNaN(amount) || amount <= 0) {
+      alert("Valor inválido.");
+      return;
+    }
+    if (amount > currentAccount.currentBalance) {
+      alert("Saldo insuficiente.");
+      return;
+    }
+    const trade = {
+      id: currentAccount.trades.length + 1,
+      type: "withdrawal",
+      value: -amount,
+      date: new Date()
+    };
+    currentAccount.trades.push(trade);
+    currentAccount.currentBalance -= amount;
+    await updateDoc(doc(db, "accounts", currentAccount.id), {
+      trades: currentAccount.trades,
+      currentBalance: currentAccount.currentBalance
+    });
+    updateAccountDashboard();
+  }
+
+  // Remove um trade da conta
+  async function removeSwingTrade(index) {
+    const removed = currentAccount.trades.splice(index, 1)[0];
+    // Recalcula o saldo: reinicia com a banca inicial e soma todos os trades restantes
+    currentAccount.currentBalance = currentAccount.initialBalance + currentAccount.trades.reduce((sum, t) => sum + t.value, 0);
+    await updateDoc(doc(db, "accounts", currentAccount.id), {
+      trades: currentAccount.trades,
+      currentBalance: currentAccount.currentBalance
+    });
+    updateAccountDashboard();
+  }
+
+  // Renderiza a tabela de trades da conta
+  function renderAccountTradesTable(trades) {
+    const tbody = document.querySelector("#accTradesTable tbody");
+    tbody.innerHTML = "";
+    trades.forEach((trade, index) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${trade.id}</td>
+        <td>${trade.type}</td>
+        <td>$${trade.value.toFixed(2)}</td>
+        <td>${new Date(trade.date).toLocaleString()}</td>
+        <td><button class="remove-btn" data-index="${index}">X</button></td>
+      `;
+      tbody.appendChild(row);
+    });
+    document.querySelectorAll("#accTradesTable .remove-btn").forEach(btn => {
+      btn.addEventListener("click", function() {
+        removeSwingTrade(parseInt(this.getAttribute("data-index")));
+      });
+    });
+  }
+
+  // Calcula o max drawdown da conta
+  function computeAccountMaxDrawdown(account) {
+    let runningBalance = account.initialBalance;
+    let peak = runningBalance;
+    let maxDrawdown = 0;
+    account.trades.forEach(trade => {
+      runningBalance += trade.value;
+      if (runningBalance > peak) peak = runningBalance;
+      const drawdown = ((peak - runningBalance) / account.initialBalance) * 100;
+      if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+    });
+    return maxDrawdown;
+  }
+
+  // Inicializa o gráfico de evolução do saldo da conta
+  function initAccountBalanceChart(account) {
+    const labels = [];
+    let balance = account.initialBalance;
+    const data = [balance];
+    account.trades.forEach((trade, i) => {
+      balance += trade.value;
+      labels.push(`Trade ${i+1}`);
+      data.push(balance);
+    });
+    const ctx = document.getElementById("accBalanceChart").getContext("2d");
+    // Se já existir um gráfico, destrói-o
+    if(window.accBalanceChart) window.accBalanceChart.destroy();
+    window.accBalanceChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: ["Start"].concat(labels),
+        datasets: [{
+          label: "Saldo",
+          data: data,
+          borderColor: "rgba(0, 216, 255, 1)",
+          backgroundColor: "rgba(0, 216, 255, 0.2)",
+          fill: true
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Trades" } },
+          y: { title: { display: true, text: "Saldo ($)" } }
+        }
+      }
+    });
+  }
+
+  // Inicializa um gráfico de barras para distribuição dos trades (lucro vs prejuízo)
+  function initAccountTradesChart(account) {
+    const profitTrades = account.trades.filter(t => t.value > 0).length;
+    const lossTrades = account.trades.filter(t => t.value <= 0).length;
+    const ctx = document.getElementById("accTradesChart").getContext("2d");
+    if(window.accTradesChart) window.accTradesChart.destroy();
+    window.accTradesChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: ["Trades Lucrativos", "Trades Prejuízo"],
+        datasets: [{
+          label: "Quantidade",
+          data: [profitTrades, lossTrades],
+          backgroundColor: [
+            "rgba(0, 216, 255, 0.7)",
+            "rgba(255, 0, 0, 0.7)"
+          ]
+        }]
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  // Aplica filtros ao histórico de trades na conta
+  function applyAccountFilters() {
+    const countFilter = document.getElementById("filterCount").value;
+    const daysFilter = document.getElementById("filterDays").value;
+    let filtered = currentAccount.trades;
+    if (daysFilter !== "all") {
+      const days = parseInt(daysFilter);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      filtered = filtered.filter(t => new Date(t.date) >= cutoff);
+    }
+    if (countFilter !== "all") {
+      const count = parseInt(countFilter);
+      filtered = filtered.slice(-count);
+    }
+    renderAccountTradesTable(filtered);
+  }
+
+  // Exporta os resultados da conta (gera um bloco de texto para copiar)
+  function exportAccountData() {
+    let exportText = `Conta: ${currentAccount.accountName}\n`;
+    exportText += `Banca Inicial: $${currentAccount.initialBalance.toFixed(2)}\n`;
+    exportText += `Saldo Atual: $${currentAccount.currentBalance.toFixed(2)}\n\n`;
+    exportText += `Histórico de Trades:\n`;
+    currentAccount.trades.forEach(trade => {
+      exportText += `${trade.id} - ${trade.type} - $${trade.value.toFixed(2)} - ${new Date(trade.date).toLocaleString()}\n`;
+    });
+    // Cria um blob e força o download de um arquivo de texto
+    const blob = new Blob([exportText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = currentAccount.accountName + "_export.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Fecha a conta (marca como closed)
+  async function closeAccount() {
+    if (!confirm("Tem certeza que deseja fechar esta conta?")) return;
+    try {
+      await updateDoc(doc(db, "accounts", currentAccount.id), {
+        status: "closed"
+      });
+      alert("Conta fechada com sucesso.");
+      window.location.hash = "accounts";
+    } catch (error) {
+      alert("Erro ao fechar conta: " + error.message);
+    }
+  }
+
+  // --- CALCULATORS SECTION (já existente) ---
   function renderCalculatorsPage() {
     const calculatorsHTML = `
       <h2>Calculators</h2>
@@ -1006,7 +1472,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS COM FILTRO ---
+  // --- RESULTADOS: RENDERIZAÇÃO DOS DADOS COM FILTRO (já existente) ---
   async function renderResultsPage() {
     let filterValue = "all";
     if (document.getElementById("filterSelect")) {
@@ -1023,7 +1489,6 @@ document.addEventListener("DOMContentLoaded", function() {
     
     const filteredSessions = applyFilter(sortedSessions, filterValue);
     
-    // Novas métricas agregadas:
     const totalSessions = filteredSessions.length;
     const totalTrades = filteredSessions.reduce((acc, s) => acc + s.totalTrades, 0);
     const totalGainLoss = filteredSessions.reduce((acc, s) => acc + s.totalGainLoss, 0);
@@ -1280,12 +1745,10 @@ document.addEventListener("DOMContentLoaded", function() {
     fetchCryptosData();
   }
 
-  // Alteração principal: Chama a rota serverless (/api/coinmarketcap) para evitar erros de CORS
   function fetchCryptosData() {
     fetch("/api/coinmarketcap?limit=50")
       .then(response => response.json())
       .then(data => {
-        // Verifica se os dados estão no formato esperado
         if (!data || !data.data) {
           document.getElementById("cryptosContent").innerHTML = `<p>Erro ao receber dados da API.</p>`;
           return;
@@ -1297,7 +1760,6 @@ document.addEventListener("DOMContentLoaded", function() {
       });
   }
 
-  // Filtramos para remover as stablecoins (aqueles que possuem a tag "stablecoin")
   function renderCryptosTable(cryptos) {
     const filteredCryptos = cryptos.filter(coin => {
       return !coin.tags || (coin.tags && !coin.tags.includes("stablecoin"));
@@ -1333,7 +1795,6 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("cryptosContent").innerHTML = tableHTML;
   }
 
-  // Função auxiliar para formatar números grandes
   function formatNumber(num) {
     return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }
