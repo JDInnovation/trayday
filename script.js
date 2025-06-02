@@ -1,4 +1,3 @@
-// script.js
 import { 
   auth, 
   createUserWithEmailAndPassword, 
@@ -22,7 +21,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
 document.addEventListener("DOMContentLoaded", function() {
-  // Variável para o usuário autenticado via Firebase
+  // Variáveis para o usuário autenticado via Firebase
   let currentUser = null;
   // sessionHistory armazenará as sessões recuperadas do Firestore
   let sessionHistory = [];
@@ -1385,10 +1384,19 @@ document.addEventListener("DOMContentLoaded", function() {
            <input type="number" id="tradeValue" placeholder="Enter amount" required/>
            <button id="addAccountTradeBtn" class="primary-btn">Add Trade</button>
          </div>
+
+         <!-- ESTATÍSTICAS EXISTENTES E NOVAS -->
          <div class="account-stats">
            <h3>Statistics</h3>
            <div class="stats-cards" id="accountStatsCards"></div>
          </div>
+
+         <!-- NOVA SEÇÃO: RISCO -->
+         <div class="risk-stats">
+           <h3>Risk Parameters</h3>
+           <div class="stats-cards" id="riskStatsCards"></div>
+         </div>
+
          <div class="account-chart">
            <h3>Balance Over Time</h3>
            <canvas id="accountChart"></canvas>
@@ -1430,6 +1438,8 @@ document.addEventListener("DOMContentLoaded", function() {
       </div>
     `;
     document.getElementById("mainContent").innerHTML = html;
+
+    // Eventos de botões
     document.getElementById("backAccountsDetailBtn").addEventListener("click", function() {
        window.location.hash = "accounts";
     });
@@ -1496,7 +1506,10 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("applyFilterBtn").addEventListener("click", function() {
        applyAccountFilter(account, accountId);
     });
+
+    // Renderização das estatísticas e gráficos
     renderAccountStats(account);
+    renderRiskStats(account);
     renderAccountHistory(account);
     initAccountChart(account);
   }
@@ -1517,26 +1530,128 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function renderAccountStats(account) {
+    // Calcular métricas adicionais:
     const trades = account.trades || [];
+    let runningBalance = account.initialBalance;
+    let peak = runningBalance;
+    let maxDrawdownVal = 0;
+    let bestBalance = runningBalance;
+
+    let totalSwingProfit = 0;
+    let swingCount = 0;
+    let swingProfitPercentages = [];
+    let depositSum = 0;
+
+    // Iterar em ordem cronológica
+    const sortedTrades = [...trades].sort((a, b) => new Date(a.date) - new Date(b.date));
+    sortedTrades.forEach(t => {
+      if (t.type === "deposit") {
+        depositSum += t.value;
+        runningBalance += t.value;
+      } else if (t.type === "withdrawal") {
+        runningBalance += t.value; // valor já é negativo
+      } else if (t.type === "swing") {
+        // Cálculo de lucro em $ e porcentagem
+        totalSwingProfit += t.value;
+        const profitPct = (t.value / runningBalance) * 100;
+        swingProfitPercentages.push(profitPct);
+        swingCount++;
+        runningBalance += t.value;
+      }
+      // Atualizar peak e drawdown
+      if (runningBalance > peak) peak = runningBalance;
+      const drawdownPct = ((peak - runningBalance) / peak) * 100;
+      if (drawdownPct > maxDrawdownVal) {
+        maxDrawdownVal = drawdownPct;
+      }
+      // Atualizar melhor saldo
+      if (runningBalance > bestBalance) {
+        bestBalance = runningBalance;
+      }
+    });
+
+    // Percentagem feita acima dos depósitos
+    let percentAboveDeposits = "N/A";
+    if (depositSum > 0) {
+      percentAboveDeposits = ((totalSwingProfit / depositSum) * 100).toFixed(2) + "%";
+    }
+
+    // Média de lucro por trade (porcentagem)
+    let avgProfitPct = "0.00%";
+    if (swingProfitPercentages.length > 0) {
+      const somaPct = swingProfitPercentages.reduce((acc, p) => acc + p, 0);
+      avgProfitPct = (somaPct / swingProfitPercentages.length).toFixed(2) + "%";
+    }
+
+    // Máximo drawdown em porcentagem
+    const maxDrawdownDisplay = maxDrawdownVal.toFixed(2) + "%";
+
+    // Melhor saldo obtido
+    const bestBalanceDisplay = `$${bestBalance.toFixed(2)}`;
+
+    // CRUD das estatísticas originais (total trades, total gain/loss, win rate)
     const totalTrades = trades.length;
     const totalGainLoss = trades.reduce((sum, t) => sum + t.value, 0);
     const wins = trades.filter(t => t.value > 0).length;
-    const winRate = totalTrades ? ((wins / totalTrades) * 100).toFixed(2) : 0;
+    const winRate = totalTrades ? ((wins / totalTrades) * 100).toFixed(2) + "%" : "0.00%";
+
     const statsHTML = `
-     <div class="stats-card">
-       <h3>Total Trades</h3>
-       <p>${totalTrades}</p>
-     </div>
-     <div class="stats-card">
-       <h3>Total Gain/Loss</h3>
-       <p>$${totalGainLoss.toFixed(2)}</p>
-     </div>
-     <div class="stats-card">
-       <h3>Win Rate</h3>
-       <p>${winRate}%</p>
-     </div>
+      <div class="stats-card">
+        <h3>Total Trades</h3>
+        <p>${totalTrades}</p>
+      </div>
+      <div class="stats-card">
+        <h3>Total Gain/Loss</h3>
+        <p>$${totalGainLoss.toFixed(2)}</p>
+      </div>
+      <div class="stats-card">
+        <h3>Win Rate</h3>
+        <p>${winRate}</p>
+      </div>
+      <div class="stats-card">
+        <h3>Percent Above Deposits</h3>
+        <p>${percentAboveDeposits}</p>
+      </div>
+      <div class="stats-card">
+        <h3>Avg Profit/Trade</h3>
+        <p>${avgProfitPct}</p>
+      </div>
+      <div class="stats-card">
+        <h3>Max Drawdown</h3>
+        <p>${maxDrawdownDisplay}</p>
+      </div>
+      <div class="stats-card">
+        <h3>Best Balance</h3>
+        <p>${bestBalanceDisplay}</p>
+      </div>
     `;
     document.getElementById("accountStatsCards").innerHTML = statsHTML;
+  }
+
+  function renderRiskStats(account) {
+    const currentBalance = account.currentBalance;
+    // 5% do saldo atual por trade
+    const riskPerTrade = (0.05 * currentBalance).toFixed(2);
+    // 15% de prejuízo máximo por dia (sobre o saldo atual)
+    const maxLossPerDay = (0.15 * currentBalance).toFixed(2);
+    // Meta ideal de 20% sobre o valor do saldo
+    const targetProfit = (0.20 * currentBalance).toFixed(2);
+
+    const riskHTML = `
+      <div class="stats-card">
+        <h3>Risk per Trade (5%)</h3>
+        <p>$${riskPerTrade}</p>
+      </div>
+      <div class="stats-card">
+        <h3>Max Loss per Day (15%)</h3>
+        <p>$${maxLossPerDay}</p>
+      </div>
+      <div class="stats-card">
+        <h3>Target Profit (20%)</h3>
+        <p>$${targetProfit}</p>
+      </div>
+    `;
+    document.getElementById("riskStatsCards").innerHTML = riskHTML;
   }
 
   function renderAccountHistory(account) {
