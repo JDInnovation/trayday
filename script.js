@@ -58,7 +58,7 @@ document.addEventListener("DOMContentLoaded", function() {
       category: "informação",
       excerpt: "Scalping can be highly profitable if executed with precision.",
       thumbnail: "thumb3.jpg",
-      content: "Scalping, a strategy focused on frequent small gains, is gaining traction in volatile markets."
+      content: "Scalping, a strategy focused on frequent small gains, is gaining traction em volatile markets."
     }
   ];
 
@@ -1570,10 +1570,11 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
 
-    // Percentagem feita acima dos depósitos
+    // **Novo cálculo**: base = inicialBalance + depósitos
+    const investedCapital = account.initialBalance + depositSum;
     let percentAboveDeposits = "N/A";
-    if (depositSum > 0) {
-      percentAboveDeposits = ((totalSwingProfit / depositSum) * 100).toFixed(2) + "%";
+    if (investedCapital > 0) {
+      percentAboveDeposits = ((totalSwingProfit / investedCapital) * 100).toFixed(2) + "%";
     }
 
     // Média de lucro por trade (porcentagem)
